@@ -67,8 +67,8 @@ def generate_noise(size, noise_size, device):
 
 
 
-def plot_gen_images(gen, depth, fade_in, use_ema=True, logan=False):
-    noise = generate_noise(16, device=device)
+def plot_gen_images(gen, depth, fade_in, noise_size, device):
+    noise = generate_noise(16, noise_size, device=device)
     imgs = gen(noise, depth, fade_in).data.cpu().numpy()
     imgs = swap_channels_batch(imgs)
     
@@ -80,7 +80,10 @@ def plot_gen_images(gen, depth, fade_in, use_ema=True, logan=False):
     plt.show()
     
 
-def save_gen_fixed_noise(gen, save_path, fixed_noise, depth, fade_in, counter, use_ema=True):
+def save_gen_fixed_noise(gen, depth, fade_in, counter, fixed_noise, save_path):
+    this_save_path = save_path + 'imgs_fixed/'
+    if not os.path.exists(this_save_path):
+        os.mkdir(this_save_path)
     imgs = gen(fixed_noise, depth, fade_in).data.cpu().numpy()
         
     imgs = swap_channels_batch(imgs)
@@ -89,7 +92,7 @@ def save_gen_fixed_noise(gen, save_path, fixed_noise, depth, fade_in, counter, u
     for i in range(4):
         for j in range(4):
             axs[i,j].imshow(imgs[4*i+j])
-    plt.savefig(save_path + '%d_%d.png'%(depth, counter))
+    plt.savefig(this_save_path + '%d_%d.png'%(depth, counter))
     plt.close(fig)
 
 

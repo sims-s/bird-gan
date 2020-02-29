@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import numpy as np
 import os
 from modeling_utils import *
+import datetime
 
 # Mostly inspired by: https://github.com/akanimax/pro_gan_pytorch/blob/master/pro_gan_pytorch/CustomLayers.py
 # function to calculate the Exponential moving averages for the Generator weights
@@ -94,18 +95,19 @@ def train_on_depth_from_batch_progan(gen, gen_opt, gen_ema, discrim, discrim_opt
     return d_loss, g_loss
 
 
-def checkpoint_progan(gen, gen_ema, discrim, d_loss_hist, g_loss_hist, save_path, depth):
+def checkpoint_progan(gen, gen_ema, discrim, d_loss_hist, g_loss_hist, depth, fade_in, counter, fixed_noise, noise_size, device, save_path):
     print('Mean d loss: ', np.mean(d_loss_hist))
     print('Mean g loss: ', np.mean(g_loss_hist))
-    plot_gen_images(gen_ema, depth, fade_in)
+    plot_gen_images(gen_ema, depth, fade_in, noise_size, device)
     torch.save(discrim.state_dict(), save_path + 'discrim_%d.pt'%(depth))
     torch.save(gen.state_dict(), save_path + 'gen_%d.pt'%(depth))
-    torch.save(gen_for_ema.state_dict(), save_path + 'gen_ema_%d.pt'%(depth))
+    torch.save(gen_ema.state_dict(), save_path + 'gen_ema_%d.pt'%(depth))
     
-    save_gen_fixed_noise(gen_ema, depth, fade_in, counter)
+    save_gen_fixed_noise(gen_ema, depth, fade_in, counter, fixed_noise, save_path)
 
 
-def train_on_depth_progan(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, img_size, nb_epochs, fade_in_pct, noise_size, grad_pen_weight, data_loader, device, save_path = '.', sample_interval=1000):
+def train_on_depth_progan(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, img_size, nb_epochs, fade_in_pct, 
+                                noise_size, grad_pen_weight, data_loader, device, fixed_noise, save_path, sample_interval=1000):
     if not os.path.exists(save_path):
         os.mkdir(save_path)
     
@@ -139,7 +141,7 @@ def train_on_depth_progan(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, im
             counter+=1
 
             if not counter % (sample_interval):
-                checkpoint_progan(gen, gen_ema, discrim, d_loss_hist, g_loss_hist, save_path, depth)
+                checkpoint_progan(gen, gen_ema, discrim, d_loss_hist, g_loss_hist, depth, fade_in, counter, fixed_noise, noise_size, device, save_path)
                 d_loss_hist = []
                 g_loss_hist = []
                 
@@ -148,6 +150,4 @@ def train_on_depth_progan(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, im
         epoch_pbar.update(1)
         pbar.close()
         
-    torch.save(discrim.state_dict(), save_path + 'discrim_%d.pt'%(depth))
-    torch.save(gen.state_dict(), save_path + 'gen_%d.pt'%(depth))
-    torch.save(gen_for_ema.state_dict(), save_path + 'gen_ema_%d.pt'%(depth))
+    checkpoint_progan(gen, gen_ema, discrim, d_loss_hist, g_loss_hist, depth, 1, counter, fixed_noise, noise_size, device, save_path)
