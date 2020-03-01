@@ -2,3 +2,11 @@
 Mask_RCNN/
 data/*
 *.pt
+old/*
+notebooks/junk/*
+chromedriver_win32/*
+flickr-scrape/*
+geckodriver.exe
+*.pyc
+notebooks/geckodriver.log
+cocoapi/*
