@@ -90,10 +90,10 @@ class StyleGanMapping(nn.Module):
     def forward(self, x):
         x = self.layers(x)
         if self.num_copies:
-            x = x.unsqueeze(1).expand(-1, self.num_copies, -1)
+            x = x.unsqueeze(1).expand(-1, self.num_copies, -1).contiguous()
         return x
 
-def num_feats_per_layer(layer_index, base=8192, decay=1, max_val=512):
+def num_feats_per_layer(layer_index, base=8192, decay=1, max_val=128):
     return min(int(base / (2 **((layer_index+1) * decay))), max_val)
 
 class StyleGanGenSynthesis(nn.Module):
@@ -127,19 +127,17 @@ class StyleGanGenSynthesis(nn.Module):
             return x
 
 class StyleGanGenerator(nn.Module):
-    def __init__(self, max_depth, latent_size_in, latent_size_map):
+    def __init__(self, max_depth, latent_size_in):
         super(StyleGanGenerator, self).__init__()
         self.max_depth = max_depth
-        self.mapping_layers = StyleGanMapping(latent_size_in, latent_size_map, 8, max_depth*2)
-        self.synthesis_layers = StyleGanGenSynthesis(latent_size_map, max_depth)
+        self.mapping_layers = StyleGanMapping(latent_size_in, latent_size_in, 8, max_depth*2)
+        self.synthesis_layers = StyleGanGenSynthesis(latent_size_in, max_depth)
 
-        self.truncation = Truncation(torch.zeros(latent_size_map))
+        self.truncation = Truncation(torch.zeros(latent_size_in))
         self.style_mix_prob = .9
 
     def forward(self, latents, depth, alpha):
         mapped_latents = self.mapping_layers(latents)
-        
-
         if self.training:
             self.truncation.update(mapped_latents[0,0].detach())
 
@@ -153,7 +151,8 @@ class StyleGanGenerator(nn.Module):
             mapped_latents = torch.where(layer_idx < cutoff, mapped_latents, second_mapped_latents)
 
             mapped_latents = self.truncation(mapped_latents)
-        return self.synthesis_layers(mapped_latents, depth, alpha)
+        output = self.synthesis_layers(mapped_latents, depth, alpha).contiguous()
+        return output
 
 
 class StyleGanDiscriminator(nn.Module):

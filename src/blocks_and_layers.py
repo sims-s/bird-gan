@@ -69,7 +69,7 @@ class PerChannelNoise(nn.Module):
 
     def forward(self, x, noise=None):
         if noise is None:
-            noise = torch.randn(x.size(0), 1, x.size(2), x.size(3))
+            noise = torch.randn(x.size(0), 1, x.size(2), x.size(3)).to(x.device)
         else:
             if not hasattr(self, 'noise'):
                 raise ValueError('Need to either pass or set noise!')
@@ -172,7 +172,7 @@ class StyleMod(nn.Module):
         style = self.layer(latent)
         style = style.view(-1, 2, x.size(1), 1, 1)
         x = x + x * style[:,0] + style[:,1]
-        return x
+        return x.contiguous()
 
 class NoiseLReluNormStyle(nn.Module):
     def __init__(self, nb_channels, latent_size):
@@ -384,12 +384,10 @@ class GenBlockStyleGan(nn.Module):
         self.layers2 = NoiseLReluNormStyle(channels_out, latent_size)
 
     def forward(self, x, latents):
-        print('Gen block input: ', x.size())
         x = self.conv1(x)
         x = self.layers1(x, latents[:,0])
         x = self.conv2(x)
         x = self.layers2(x, latents[:,1])
-        print('Gen block output: ', x.size())
         return x
         
 class DiscrimLastBlockStyleGan(nn.Module):

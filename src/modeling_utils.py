@@ -22,7 +22,6 @@ def load_df_convert_to_dict(path, source):
 
 def get_label_dict(data_path):
     sources = ['nabirds', 'cub', 'obd', 'flikr']
-    sources = ['cub']
     dfs = [load_df_convert_to_dict(data_path, source) for source in sources]
     df = pd.concat(dfs)
     df = df.reset_index(drop=True)
