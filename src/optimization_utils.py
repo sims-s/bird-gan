@@ -89,13 +89,13 @@ def gen_step_wasserstein(gen, gen_opt, gen_ema, discrim, batch_noise, depth, alp
     update_average(gen_ema, gen, .999)
     return loss.item()
 
-def train_on_depth_from_batch_progan(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, fade_in, x_batch, batch_noise, grad_pen_weight, device):
+def train_on_depth_from_batch_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, fade_in, x_batch, batch_noise, grad_pen_weight, device):
     d_loss = discrim_step_wasserstein_gp(discrim, discrim_opt, gen, x_batch, batch_noise, depth, fade_in, grad_pen_weight, device, 1)
     g_loss = gen_step_wasserstein(gen, gen_opt, gen_ema, discrim, batch_noise, depth, fade_in)
     return d_loss, g_loss
 
 
-def checkpoint_progan(gen, gen_ema, discrim, d_loss_hist, g_loss_hist, depth, fade_in, counter, fixed_noise, noise_size, device, save_path):
+def checkpoint(gen, gen_ema, discrim, d_loss_hist, g_loss_hist, depth, fade_in, counter, fixed_noise, noise_size, device, save_path):
     print('Mean d loss: ', np.mean(d_loss_hist))
     print('Mean g loss: ', np.mean(g_loss_hist))
     plot_gen_images(gen_ema, depth, fade_in, noise_size, device)
@@ -106,8 +106,11 @@ def checkpoint_progan(gen, gen_ema, discrim, d_loss_hist, g_loss_hist, depth, fa
     save_gen_fixed_noise(gen_ema, depth, fade_in, counter, fixed_noise, save_path)
 
 
-def train_on_depth_progan(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, img_size, nb_epochs, fade_in_pct, 
+def train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, img_size, nb_epochs, fade_in_pct, 
                                 noise_size, grad_pen_weight, data_loader, device, fixed_noise, save_path, sample_interval=1000):
+
+    gen.train()
+    discrim.train()
     if not os.path.exists(save_path):
         os.mkdir(save_path)
     
@@ -134,14 +137,14 @@ def train_on_depth_progan(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, im
             
             batch_noise = generate_noise(len(x_batch), noise_size, device)
             
-            d_loss, g_loss = train_on_depth_from_batch_progan(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, fade_in, x_batch, batch_noise, grad_pen_weight, device)
+            d_loss, g_loss = train_on_depth_from_batch_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, fade_in, x_batch, batch_noise, grad_pen_weight, device)
             d_loss_hist.append(d_loss)
             g_loss_hist.append(g_loss)
 
             counter+=1
 
             if not counter % (sample_interval):
-                checkpoint_progan(gen, gen_ema, discrim, d_loss_hist, g_loss_hist, depth, fade_in, counter, fixed_noise, noise_size, device, save_path)
+                checkpoint(gen, gen_ema, discrim, d_loss_hist, g_loss_hist, depth, fade_in, counter, fixed_noise, noise_size, device, save_path)
                 d_loss_hist = []
                 g_loss_hist = []
                 
@@ -150,4 +153,4 @@ def train_on_depth_progan(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, im
         epoch_pbar.update(1)
         pbar.close()
         
-    checkpoint_progan(gen, gen_ema, discrim, d_loss_hist, g_loss_hist, depth, 1, counter, fixed_noise, noise_size, device, save_path)
+    checkpoint(gen, gen_ema, discrim, d_loss_hist, g_loss_hist, depth, 1, counter, fixed_noise, noise_size, device, save_path)

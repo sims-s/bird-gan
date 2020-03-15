@@ -81,9 +81,12 @@ def plot_gen_images(gen, depth, fade_in, noise_size, device):
     
 
 def save_gen_fixed_noise(gen, depth, fade_in, counter, fixed_noise, save_path):
+    gen.eval()
     this_save_path = save_path + 'imgs_fixed/'
     if not os.path.exists(this_save_path):
         os.mkdir(this_save_path)
+    if not os.path.exists(this_save_path + 'fixed_noise.npy'):
+        np.save(this_save_path + 'fixed_noise.npy', fixed_noise.data.cpu().numpy())
     imgs = gen(fixed_noise, depth, fade_in).data.cpu().numpy()
         
     imgs = swap_channels_batch(imgs)
