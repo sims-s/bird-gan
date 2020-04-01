@@ -394,7 +394,7 @@ class DiscrimLastBlockStyleGan(nn.Module):
     def __init__(self, in_channels, mid_channels):
         super(DiscrimLastBlockStyleGan, self).__init__()
         self.first_layers = nn.Sequential(
-            AddStandardDeviationGrouped(),
+            AddStandardDeviationGrouped(4),
             EqualizedLRConv2d(in_channels + 1, in_channels, kernel_size=3, padding=1),
             nn.LeakyReLU(.2)
         )

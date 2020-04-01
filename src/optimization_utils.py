@@ -68,7 +68,7 @@ def gen_loss_wasserstein(discrim, fake_samples, depth, alpha):
     return -discrim(fake_samples, depth, alpha).mean()
 
 
-def discrim_step_wasserstein_gp(discrim, discrim_opt, gen, real_images, batch_noise, depth, alpha, grad_pen_weight, device, n_iters=1):
+def discrim_step_wasserstein_gp(discrim, discrim_opt, gen, real_images, batch_noise, depth, alpha, grad_pen_weight, device, n_iters=2):
     total_loss = 0
     fake_images = gen(batch_noise, depth, alpha).detach()
     for _ in range(n_iters):
@@ -125,8 +125,9 @@ def train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, d
     for epoch in range(nb_epochs):
         pbar = tqdm.notebook.tqdm(total = len(data_loader), leave=False)
         for x_batch in data_loader:
+            if not x_batch.size(0)==data_loader.batch_size: continue
             fade_in = min(1, counter/(fade_in_pct * len(data_loader) * nb_epochs))
-            if depth==0 or fade_in > 1:
+            if depth==0 or fade_in >= 1:
                 x_batch = downsampler(x_batch)
             else:
                 x_batch_norm = downsampler(x_batch)
