@@ -95,10 +95,11 @@ def train_on_depth_from_batch_wasserstein_gp(gen, gen_opt, gen_ema, discrim, dis
     return d_loss, g_loss
 
 
-def checkpoint(gen, gen_ema, discrim, d_loss_hist, g_loss_hist, depth, fade_in, counter, fixed_noise, noise_size, device, save_path):
-    print('Mean d loss: ', np.mean(d_loss_hist))
-    print('Mean g loss: ', np.mean(g_loss_hist))
-    plot_gen_images(gen_ema, depth, fade_in, noise_size, device)
+def checkpoint(gen, gen_ema, discrim, d_loss_hist, g_loss_hist, depth, fade_in, counter, fixed_noise, noise_size, device, save_path, save_samples):
+    if save_samples:
+        print('Mean d loss: ', np.mean(d_loss_hist))
+        print('Mean g loss: ', np.mean(g_loss_hist))
+    plot_gen_images(gen_ema, depth, fade_in, noise_size, device, save_path, save_samples)
     torch.save(discrim.state_dict(), save_path + 'discrim_%d.pt'%(depth))
     torch.save(gen.state_dict(), save_path + 'gen_%d.pt'%(depth))
     torch.save(gen_ema.state_dict(), save_path + 'gen_ema_%d.pt'%(depth))
@@ -107,7 +108,7 @@ def checkpoint(gen, gen_ema, discrim, d_loss_hist, g_loss_hist, depth, fade_in, 
 
 
 def train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, img_size, nb_epochs, fade_in_pct, 
-                                noise_size, grad_pen_weight, data_loader, device, fixed_noise, save_path, sample_interval=1000):
+                                noise_size, grad_pen_weight, data_loader, device, fixed_noise, save_path, save_samples, sample_interval=1000):
 
     gen.train()
     discrim.train()
@@ -117,23 +118,33 @@ def train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, d
     d_loss_hist = []
     g_loss_hist = []
     counter = 0
+
+    '''
     downsampler = nn.AvgPool2d(int(img_size / (4*2**depth)))
     if depth > 0:
         prev_depth_downsampler = nn.AvgPool2d(int(img_size / (4*2**(depth-1))))
+    '''
     epoch_pbar = tqdm.notebook.tqdm(total = nb_epochs)
 
     for epoch in range(nb_epochs):
         pbar = tqdm.notebook.tqdm(total = len(data_loader), leave=False)
         for x_batch in data_loader:
-            if not x_batch.size(0)==data_loader.batch_size: continue
             fade_in = min(1, counter/(fade_in_pct * len(data_loader) * nb_epochs))
+            
             if depth==0 or fade_in >= 1:
+                pass
+                '''
                 x_batch = downsampler(x_batch)
+                '''
             else:
+                '''
                 x_batch_norm = downsampler(x_batch)
                 x_batch_down_up = F.interpolate(prev_depth_downsampler(x_batch), scale_factor=2)
                 x_batch = fade_in*x_batch_norm + ((1-fade_in)*x_batch_down_up)
                 x_batch = x_batch
+                '''
+                x_batch_down_up = F.interpolate(nn.AvgPool2d(2)(x_batch), scale_factor=2)
+                x_batch = fade_in * x_batch + ((1-fade_in) * x_batch_down_up)
             x_batch = x_batch.to(device)
             
             batch_noise = generate_noise(len(x_batch), noise_size, device)
@@ -145,7 +156,7 @@ def train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, d
             counter+=1
 
             if not counter % (sample_interval):
-                checkpoint(gen, gen_ema, discrim, d_loss_hist, g_loss_hist, depth, fade_in, counter, fixed_noise, noise_size, device, save_path)
+                checkpoint(gen, gen_ema, discrim, d_loss_hist, g_loss_hist, depth, fade_in, counter, fixed_noise, noise_size, device, save_path, save_samples)
                 d_loss_hist = []
                 g_loss_hist = []
                 
@@ -154,4 +165,4 @@ def train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, d
         epoch_pbar.update(1)
         pbar.close()
         
-    checkpoint(gen, gen_ema, discrim, d_loss_hist, g_loss_hist, depth, 1, counter, fixed_noise, noise_size, device, save_path)
+    checkpoint(gen, gen_ema, discrim, d_loss_hist, g_loss_hist, depth, 1, counter, fixed_noise, noise_size, device, save_path, save_samples)

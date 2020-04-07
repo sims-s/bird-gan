@@ -67,17 +67,29 @@ def generate_noise(size, noise_size, device):
 
 
 
-def plot_gen_images(gen, depth, fade_in, noise_size, device):
+def plot_gen_images(gen, depth, fade_in, noise_size, device, save_path, save_samples):
     noise = generate_noise(16, noise_size, device=device)
     imgs = gen(noise, depth, fade_in).data.cpu().numpy()
     imgs = swap_channels_batch(imgs)
+    imgs = np.clip(imgs, 0, 1)
     
     fig, axs = plt.subplots(4,4)
     fig.set_size_inches(8,8)
     for i in range(4):
         for j in range(4):
             axs[i,j].imshow(imgs[4*i+j])
-    plt.show()
+    if save_samples:
+        fig = plt.gcf()
+        this_save_path = save_path + 'samples/'
+        if not os.path.exists(this_save_path):
+            os.mkdir(this_save_path)
+        files_in_folder = os.listdir(this_save_path)
+        nums_in_folder = [int(f[:f.find('.')]) for f in files_in_folder]
+        next_save_file = 0 if len(nums_in_folder)==0 else max(nums_in_folder) + 1
+        plt.savefig(this_save_path + str(next_save_file) + '.png')
+        plt.close(fig)
+    else:
+        plt.show()
     
 
 def save_gen_fixed_noise(gen, depth, fade_in, counter, fixed_noise, save_path):
@@ -88,6 +100,7 @@ def save_gen_fixed_noise(gen, depth, fade_in, counter, fixed_noise, save_path):
     if not os.path.exists(this_save_path + 'fixed_noise.npy'):
         np.save(this_save_path + 'fixed_noise.npy', fixed_noise.data.cpu().numpy())
     imgs = gen(fixed_noise, depth, fade_in).data.cpu().numpy()
+    imgs= np.clip(imgs, 0, 1)
         
     imgs = swap_channels_batch(imgs)
     fig, axs = plt.subplots(4,4)
