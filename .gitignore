@@ -9,5 +9,6 @@ chromedriver_win32/*
 flickr-scrape/*
 geckodriver.exe
 *.pyc
+*.cpython-37
 notebooks/geckodriver.log
 cocoapi/*
