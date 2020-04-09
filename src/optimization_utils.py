@@ -5,6 +5,7 @@ import numpy as np
 import os
 from modeling_utils import *
 import datetime
+import tqdm
 
 # Mostly inspired by: https://github.com/akanimax/pro_gan_pytorch/blob/master/pro_gan_pytorch/CustomLayers.py
 # function to calculate the Exponential moving averages for the Generator weights
@@ -124,10 +125,10 @@ def train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, d
     if depth > 0:
         prev_depth_downsampler = nn.AvgPool2d(int(img_size / (4*2**(depth-1))))
     '''
-    epoch_pbar = tqdm.notebook.tqdm(total = nb_epochs)
+    epoch_pbar = tqdm.tqdm(total = nb_epochs)
 
     for epoch in range(nb_epochs):
-        pbar = tqdm.notebook.tqdm(total = len(data_loader), leave=False)
+        pbar = tqdm.tqdm(total = len(data_loader), leave=False)
         for x_batch in data_loader:
             fade_in = min(1, counter/(fade_in_pct * len(data_loader) * nb_epochs))
             
@@ -159,6 +160,7 @@ def train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, d
                 checkpoint(gen, gen_ema, discrim, d_loss_hist, g_loss_hist, depth, fade_in, counter, fixed_noise, noise_size, device, save_path, save_samples)
                 d_loss_hist = []
                 g_loss_hist = []
+                return
                 
             pbar.update(1)
             

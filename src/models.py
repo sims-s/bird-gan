@@ -93,7 +93,7 @@ class StyleGanMapping(nn.Module):
             x = x.unsqueeze(1).expand(-1, self.num_copies, -1).contiguous()
         return x
 
-def num_feats_per_layer(layer_index, base=8192, decay=1, max_val=128):
+def num_feats_per_layer(layer_index, base=8192, decay=1, max_val=512):
     return min(int(base / (2 **((layer_index+1) * decay))), max_val)
 
 class StyleGanGenSynthesis(nn.Module):
@@ -182,10 +182,8 @@ class StyleGanDiscriminator(nn.Module):
             smaller_features = self.from_rgb[self.max_depth - depth](nn.AvgPool2d(2)(x))
             larger_features = self.layers[self.max_depth-depth-1](self.from_rgb[self.max_depth-depth-1](x))
             x = alpha * larger_features + (1-alpha)*(smaller_features)
-
             for layer in self.layers[(self.max_depth - depth):]:
                 x = layer(x)
-
             x = self.last_block(x)
             return x
 
