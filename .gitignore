@@ -12,3 +12,5 @@ geckodriver.exe
 *.cpython-37
 notebooks/geckodriver.log
 cocoapi/*
+*.npy
+nohup.out

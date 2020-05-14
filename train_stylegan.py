@@ -14,7 +14,6 @@ import torch.optim as optim
 from torchvision.utils import save_image
 import torchvision.transforms as transforms
 
-from IPython.display import display
 
 sys.path.append('./src/')
 from modeling_utils import *
@@ -26,17 +25,17 @@ from optimization_utils import *
 def main():
     assert torch.cuda.is_available()
 
-    NOISE_SIZE = 512
+    NOISE_SIZE = 128
     GRAD_PEN_WEIGHT = 10
-    MAX_DEPTH = 8
+    MAX_DEPTH = 6
     FADE_IN_PCT = .5
     BATCH_SIZE = 128
     NB_EPOCHS = 5
     SAMPLE_INTERVAL = 3
-    IMG_SIZE = 256
-    BATCH_SIZES = [1, 1, 1, 1, 1, 1, 1]
+    IMG_SIZE = 128
+    BATCH_SIZES = [128, 128, 64, 64, 64, 32]
 
-    load_path = None
+    load_path =  None
 
     data_transform = transforms.Compose([transforms.RandomHorizontalFlip(), transforms.ToTensor()])
 
@@ -48,7 +47,7 @@ def main():
         datasets[k] = BirdDataset(v, transform=data_transform)
     data_loaders = {}
     for k, v in label_dicts.items():
-        data_loaders[k] = torch.utils.data.DataLoader(datasets[k], batch_size=BATCH_SIZES[k], num_workers=0, shuffle=True)
+        data_loaders[k] = torch.utils.data.DataLoader(datasets[k], batch_size=BATCH_SIZES[k], num_workers=7, shuffle=True)
     
     device = torch.device('cuda')
 
@@ -66,30 +65,30 @@ def main():
         discrim_opt = optim.Adam(discrim.parameters(), betas=(0, .99))
 
         save_path = './' + datetime.datetime.now().strftime('%m-%d_%H-%M') + '/'
+    else:  
+        raise NotImplementedError
 
-        # train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, 0, IMG_SIZE, NB_EPOCHS, FADE_IN_PCT, NOISE_SIZE, 
-        #               GRAD_PEN_WEIGHT, data_loaders[4], device, FIXED_NOISE, save_path, sample_interval=8, save_samples=True)
+    train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, 0, IMG_SIZE, NB_EPOCHS, FADE_IN_PCT, NOISE_SIZE, 
+                  GRAD_PEN_WEIGHT, data_loaders[4], device, FIXED_NOISE, save_path, sample_interval=256, save_samples=True)
 
-        # NB_EPOCHS = 10
+    NB_EPOCHS = 10
 
-        # train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, 1, IMG_SIZE, NB_EPOCHS, FADE_IN_PCT, NOISE_SIZE, 
-        #               GRAD_PEN_WEIGHT, data_loaders[8], device, FIXED_NOISE, save_path, sample_interval=8, save_samples=True)
-        
+    train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, 1, IMG_SIZE, NB_EPOCHS, FADE_IN_PCT, NOISE_SIZE, 
+                  GRAD_PEN_WEIGHT, data_loaders[8], device, FIXED_NOISE, save_path, sample_interval=256, save_samples=True)
+    
 
-        # train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, 2, IMG_SIZE, NB_EPOCHS, FADE_IN_PCT, NOISE_SIZE, 
-        #               GRAD_PEN_WEIGHT, data_loaders[16], device, FIXED_NOISE, save_path, sample_interval=8, save_samples=True)
+    train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, 2, IMG_SIZE, NB_EPOCHS, FADE_IN_PCT, NOISE_SIZE, 
+                  GRAD_PEN_WEIGHT, data_loaders[16], device, FIXED_NOISE, save_path, sample_interval=256, save_samples=True)
 
-        # train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, 3, IMG_SIZE, NB_EPOCHS, FADE_IN_PCT, NOISE_SIZE, 
-        #               GRAD_PEN_WEIGHT, data_loaders[32], device, FIXED_NOISE, save_path, sample_interval=8, save_samples=True)
+    train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, 3, IMG_SIZE, NB_EPOCHS, FADE_IN_PCT, NOISE_SIZE, 
+                  GRAD_PEN_WEIGHT, data_loaders[32], device, FIXED_NOISE, save_path, sample_interval=256, save_samples=True)
 
-        # train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, 4, IMG_SIZE, NB_EPOCHS, FADE_IN_PCT, NOISE_SIZE, 
-        #               GRAD_PEN_WEIGHT, data_loaders[64], device, FIXED_NOISE, save_path, sample_interval=8, save_samples=True)
+    train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, 4, IMG_SIZE, NB_EPOCHS, FADE_IN_PCT, NOISE_SIZE, 
+                  GRAD_PEN_WEIGHT, data_loaders[64], device, FIXED_NOISE, save_path, sample_interval=256, save_samples=True)
 
-        train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, 5, IMG_SIZE, NB_EPOCHS, FADE_IN_PCT, NOISE_SIZE, 
-                      GRAD_PEN_WEIGHT, data_loaders[128], device, FIXED_NOISE, save_path, sample_interval=8, save_samples=True)
+    train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, 5, IMG_SIZE, NB_EPOCHS, FADE_IN_PCT, NOISE_SIZE, 
+                    GRAD_PEN_WEIGHT, data_loaders[128], device, FIXED_NOISE, save_path, sample_interval=512, save_samples=True)
 
-        train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, 6, IMG_SIZE, NB_EPOCHS, FADE_IN_PCT, NOISE_SIZE, 
-                      GRAD_PEN_WEIGHT, data_loaders[256], device, FIXED_NOISE, save_path, sample_interval=8, save_samples=True)
 
 
 

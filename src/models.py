@@ -93,7 +93,7 @@ class StyleGanMapping(nn.Module):
             x = x.unsqueeze(1).expand(-1, self.num_copies, -1).contiguous()
         return x
 
-def num_feats_per_layer(layer_index, base=8192, decay=1, max_val=512):
+def num_feats_per_layer(layer_index, base=8192, decay=1, max_val=128):
     return min(int(base / (2 **((layer_index+1) * decay))), max_val)
 
 class StyleGanGenSynthesis(nn.Module):

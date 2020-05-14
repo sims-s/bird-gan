@@ -128,6 +128,7 @@ def train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, d
     epoch_pbar = tqdm.tqdm(total = nb_epochs)
 
     for epoch in range(nb_epochs):
+        print('START OF EPOCH %d'%epoch)
         pbar = tqdm.tqdm(total = len(data_loader), leave=False)
         for x_batch in data_loader:
             fade_in = min(1, counter/(fade_in_pct * len(data_loader) * nb_epochs))
@@ -160,8 +161,6 @@ def train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, d
                 checkpoint(gen, gen_ema, discrim, d_loss_hist, g_loss_hist, depth, fade_in, counter, fixed_noise, noise_size, device, save_path, save_samples)
                 d_loss_hist = []
                 g_loss_hist = []
-                return
-                
             pbar.update(1)
             
         epoch_pbar.update(1)
