@@ -6,6 +6,7 @@ import os
 from modeling_utils import *
 import datetime
 import tqdm
+import warnings
 
 # Mostly inspired by: https://github.com/akanimax/pro_gan_pytorch/blob/master/pro_gan_pytorch/CustomLayers.py
 # function to calculate the Exponential moving averages for the Generator weights
@@ -69,31 +70,63 @@ def gen_loss_wasserstein(discrim, fake_samples, depth, alpha):
     return -discrim(fake_samples, depth, alpha).mean()
 
 
-def discrim_step_wasserstein_gp(discrim, discrim_opt, gen, real_images, batch_noise, depth, alpha, grad_pen_weight, device, n_iters=2):
-    total_loss = 0
+def discrim_step_wasserstein_gp(discrim, discrim_opt, gen, real_images, batch_noise, depth, alpha, grad_pen_weight, device):
     fake_images = gen(batch_noise, depth, alpha).detach()
-    for _ in range(n_iters):
-        loss = discrim_loss_wasserstein_gp(discrim, real_images, fake_images, depth, alpha, grad_pen_weight, device)
-        discrim_opt.zero_grad()
-        loss.backward()
-        discrim_opt.step()
-        total_loss += loss.item()
-        
-    return total_loss / n_iters
+    loss = discrim_loss_wasserstein_gp(discrim, real_images, fake_images, depth, alpha, grad_pen_weight, device)
+    return loss
+    '''
+    discrim_opt.zero_grad()
+    loss.backward()
+    discrim_opt.step()
+    return loss
+    '''
         
 def gen_step_wasserstein(gen, gen_opt, gen_ema, discrim, batch_noise, depth, alpha):
     fake_images = gen(batch_noise, depth, alpha)
     loss = gen_loss_wasserstein(discrim, fake_images, depth, alpha)
+    return loss
+    '''
     gen_opt.zero_grad()
     loss.backward()
     gen_opt.step()
     update_average(gen_ema, gen, .999)
     return loss.item()
+    '''
+
+
+def loss_stop(d_loss, g_loss, g_stop_g_min=-128, g_stop_d_max=1.5, d_stop_g_max=128, d_stop_d_min=.2):
+    zero_g = False
+    zero_d = False
+    if d_loss < d_stop_d_min or g_loss > d_stop_g_max:
+        zero_d = True
+    if g_loss < g_stop_g_min or d_loss > g_stop_d_max:
+        zero_g = True
+
+    if zero_d:
+        d_loss = 0*d_loss
+    if zero_g:
+        g_loss = 0*g_loss
+
+    return d_loss, g_loss
 
 def train_on_depth_from_batch_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, fade_in, x_batch, batch_noise, grad_pen_weight, device):
-    d_loss = discrim_step_wasserstein_gp(discrim, discrim_opt, gen, x_batch, batch_noise, depth, fade_in, grad_pen_weight, device, 1)
+    d_loss = discrim_step_wasserstein_gp(discrim, discrim_opt, gen, x_batch, batch_noise, depth, fade_in, grad_pen_weight, device)
     g_loss = gen_step_wasserstein(gen, gen_opt, gen_ema, discrim, batch_noise, depth, fade_in)
-    return d_loss, g_loss
+
+    # Stop loss block
+    d_loss, g_loss = loss_stop(d_loss, g_loss)
+    
+    discrim_opt.zero_grad()
+    d_loss.backward()
+    discrim_opt.step()
+
+    gen_opt.zero_grad()
+    g_loss.backward()
+    gen_opt.step()
+    update_average(gen_ema, gen, .999)
+
+
+    return d_loss.item(), g_loss.item()
 
 
 def checkpoint(gen, gen_ema, discrim, d_loss_hist, g_loss_hist, depth, fade_in, counter, fixed_noise, noise_size, device, save_path, save_samples):
@@ -109,7 +142,9 @@ def checkpoint(gen, gen_ema, discrim, d_loss_hist, g_loss_hist, depth, fade_in, 
 
 
 def train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, img_size, nb_epochs, fade_in_pct, 
-                                noise_size, grad_pen_weight, data_loader, device, fixed_noise, save_path, save_samples, sample_interval=1000):
+                                noise_size, grad_pen_weight, data_loader, device, fixed_noise, save_path, save_samples=False, sample_interval=1000,
+                                notebook=True):
+    warnings.warn("stop loss currently enabled!")
 
     gen.train()
     discrim.train()
@@ -120,31 +155,18 @@ def train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, d
     g_loss_hist = []
     counter = 0
 
-    '''
-    downsampler = nn.AvgPool2d(int(img_size / (4*2**depth)))
-    if depth > 0:
-        prev_depth_downsampler = nn.AvgPool2d(int(img_size / (4*2**(depth-1))))
-    '''
-    epoch_pbar = tqdm.tqdm(total = nb_epochs)
+    epoch_pbar = tqdm.tqdm(total = nb_epochs) if not notebook else tqdm.notebook.tqdm(total = nb_epochs)
 
     for epoch in range(nb_epochs):
-        print('START OF EPOCH %d'%epoch)
-        pbar = tqdm.tqdm(total = len(data_loader), leave=False)
+        if not notebook:
+            print('START OF EPOCH %d'%epoch)
+        pbar = tqdm.tqdm(total = len(data_loader), leave=False) if not notebook else tqdm.notebook.tqdm(total = len(data_loader), leave=False)
         for x_batch in data_loader:
             fade_in = min(1, counter/(fade_in_pct * len(data_loader) * nb_epochs))
             
             if depth==0 or fade_in >= 1:
                 pass
-                '''
-                x_batch = downsampler(x_batch)
-                '''
             else:
-                '''
-                x_batch_norm = downsampler(x_batch)
-                x_batch_down_up = F.interpolate(prev_depth_downsampler(x_batch), scale_factor=2)
-                x_batch = fade_in*x_batch_norm + ((1-fade_in)*x_batch_down_up)
-                x_batch = x_batch
-                '''
                 x_batch_down_up = F.interpolate(nn.AvgPool2d(2)(x_batch), scale_factor=2)
                 x_batch = fade_in * x_batch + ((1-fade_in) * x_batch_down_up)
             x_batch = x_batch.to(device)
