@@ -14,3 +14,4 @@ notebooks/geckodriver.log
 cocoapi/*
 *.npy
 nohup.out
+*.png
