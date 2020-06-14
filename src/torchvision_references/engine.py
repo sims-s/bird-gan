@@ -9,7 +9,6 @@ from coco_utils import get_coco_api_from_dataset
 from coco_eval import CocoEvaluator
 import utils
 
-from tqdm import tqdm
 
 
 def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, max_epoch_size=-1):
@@ -90,8 +89,7 @@ def evaluate(model, data_loader, device):
     iou_types = _get_iou_types(model)
     coco_evaluator = CocoEvaluator(coco, iou_types)
 
-    pbar = tqdm(total=len(data_loader))
-    for image, targets in metric_logger.log_every(data_loader, 1, header):
+    for image, targets in metric_logger.log_every(data_loader, 5, header):
         image = list(img.to(device) for img in image)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 
@@ -107,7 +105,6 @@ def evaluate(model, data_loader, device):
         coco_evaluator.update(res)
         evaluator_time = time.time() - evaluator_time
         metric_logger.update(model_time=model_time, evaluator_time=evaluator_time)
-        pbar.update(1)
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
