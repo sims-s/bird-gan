@@ -3,9 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
-
-
-'''===================================General Layers==============================================='''
 class EqualizedConv2dUp(nn.Module):
     def __init__(self, channels_in, channels_out, kernel_size, stride=1, intermediate=None):
         super(EqualizedConv2dUp, self).__init__()
@@ -22,7 +19,7 @@ class EqualizedConv2dUp(nn.Module):
             scaled_weights = self.weight * self.scale_by
             scaled_weights = scaled_weights.permute(1,0,2,3)
             scaled_weights = F.pad(scaled_weights, [1,1,1,1])
-            # Other persons code doesn't scale by .25... seems like we should?
+            # Other code doesn't multiply by .25, seems like we should
             scaled_weights = (scaled_weights[:, :, 1:, 1:] + scaled_weights[:, :, :-1, 1:] + \
                             scaled_weights[:, :, 1:, :-1] + scaled_weights[:, :, :-1, :-1]) * .25
             x = F.conv_transpose2d(x, scaled_weights, stride=2, padding=(self.weight.size(-1)-1)//2)
@@ -174,39 +171,6 @@ class StyleMod(nn.Module):
         x = x + x * style[:,0] + style[:,1]
         return x.contiguous()
 
-class NoiseLReluNormStyle(nn.Module):
-    def __init__(self, nb_channels, latent_size):
-        super(NoiseLReluNormStyle, self).__init__()
-        self.layers = nn.Sequential(
-            PerChannelNoise(nb_channels),
-            nn.LeakyReLU(.2),
-            nn.InstanceNorm2d(nb_channels)
-        )
-
-        self.style_mod = StyleMod(nb_channels, latent_size)
-
-    def forward(self, x, other_style):
-        x = self.layers(x)
-        x = self.style_mod(x, other_style)
-        return x
-
-class Truncation(nn.Module):
-    def __init__(self, avg_latent, max_layer=8, thresh=.7, ema_coeff=.995):
-        super(Truncation, self).__init__()
-        self.max_layer = max_layer
-        self.thresh = thresh
-        self.ema_coeff = ema_coeff
-        self.register_buffer('avg_latent', avg_latent)
-    
-    def update(self, next_vec):
-        self.avg_latent.copy_(self.ema_coeff * self.avg_latent + (1-self.ema_coeff) * next_vec)
-    
-    def forward(self, x):
-        interp = torch.lerp(self.avg_latent, x, self.thresh)
-        truncate_indexer = (torch.arange(x.size(1)) < self.max_layer).view(1, -1, 1).to(x.device)
-        return torch.where(truncate_indexer, interp, x)
-
-
 # Upscale/downscale come directly from here: https://github.com/huangzh13/StyleGAN.pytorch/
 class Upscale2d(nn.Module):
     @staticmethod
@@ -229,7 +193,6 @@ class Upscale2d(nn.Module):
     def forward(self, x):
         return self.upscale2d(x, factor=self.factor, gain=self.gain)
 
-# what does gain mean and why is it here???
 class Downscale2d(nn.Module):
     def __init__(self, factor=2, gain=1):
         super().__init__()
@@ -284,142 +247,3 @@ class BlurLayer(nn.Module):
             groups=x.size(1)
         )
         return x
-
-
-
-
-
-'''===================================Progan Blocks==============================================='''
-class FirstGenBlockProGan(nn.Module):
-    def __init__(self, noise_size):
-        super(FirstGenBlockProGan, self).__init__()
-        self.layers = nn.Sequential(
-            EqualizedLRConv2dTranspose(noise_size, noise_size, (4,4)),
-            nn.LeakyReLU(.2, inplace=True),
-            EqualizedLRConv2d(noise_size, noise_size, (3,3), padding=1),
-            nn.LeakyReLU(.2, inplace=True),
-            PixelNorm(),
-            
-        )
-    def forward(self, x):
-        x = x.unsqueeze(-1).unsqueeze(-1)
-        return self.layers(x)
-
-
-class GenBlockProGan(nn.Module):
-    def __init__(self, channels_in, channels_out):
-        super(GenBlockProGan, self).__init__()
-        self.layers = nn.Sequential(
-            EqualizedLRConv2d(channels_in, channels_out, (3,3), padding=1),
-            nn.LeakyReLU(.2, inplace=True),
-            PixelNorm(),
-            EqualizedLRConv2d(channels_out, channels_out, (3,3), padding=1),
-            nn.LeakyReLU(.2, inplace=True),
-            PixelNorm(),
-        )
-        
-    def forward(self, x):
-        x = F.interpolate(x, scale_factor=2, mode='nearest')
-        return self.layers(x)
-
-
-class DiscrimLastBlockProGan(nn.Module):
-    def __init__(self, channels_in):
-        super(DiscrimLastBlockProGan, self).__init__()
-        self.add_std = AddStandardDeviation()
-        self.layers = nn.Sequential(
-            EqualizedLRConv2d(channels_in + 1, channels_in, (3,3), padding=1),
-            nn.LeakyReLU(.2, inplace=True),
-            EqualizedLRConv2d(channels_in, channels_in, (4,4),),
-            nn.LeakyReLU(.2, inplace=True),
-            EqualizedLRConv2d(channels_in, 1, (1,1))
-        )
-    def forward(self, x):
-        x = self.add_std(x)
-        return self.layers(x).view(-1)
-
-
-class DiscrimBlockProGan(nn.Module):
-    def __init__(self, channels_in, chanels_out):
-        super(DiscrimBlockProGan, self).__init__()
-        self.layers = nn.Sequential(
-            EqualizedLRConv2d(channels_in, channels_in, (3,3), padding=1),
-            nn.LeakyReLU(.2, inplace=True),
-            EqualizedLRConv2d(channels_in, chanels_out, (3,3), padding=1),
-            nn.LeakyReLU(.2, inplace=True),
-            nn.AvgPool2d(2)
-        )
-        
-    def forward(self, x):
-        return self.layers(x)
-
-
-'''===================================Stylegan Blocks==============================================='''
-
-class FirstGenBlockStyleGan(nn.Module):
-    def __init__(self, nb_channels, latent_size):
-        super(FirstGenBlockStyleGan, self).__init__()
-        self.nb_channels = nb_channels
-        self.const_input = nn.Parameter(torch.ones(1, nb_channels, 4, 4))
-        self.bias = nn.Parameter(torch.ones(nb_channels))
-
-        self.layers1 = NoiseLReluNormStyle(nb_channels, latent_size)
-        self.conv = EqualizedLRConv2d(nb_channels, nb_channels, 3, padding=1)
-        self.layers2 = NoiseLReluNormStyle(nb_channels, latent_size)
-
-    def forward(self, latents):
-        x = self.const_input.expand(latents.size(0), -1, -1, -1) + self.bias.view(1, -1, 1, 1)
-        x = self.layers1(x, latents[:,0])
-        x = self.conv(x)
-        x = self.layers2(x, latents[:,1])
-        return x
-
-class GenBlockStyleGan(nn.Module):
-    def __init__(self, channels_in, channels_out, latent_size):
-        super(GenBlockStyleGan, self).__init__()
-
-        self.conv1 = EqualizedConv2dUp(channels_in, channels_out, kernel_size=3)
-        self.layers1 = NoiseLReluNormStyle(channels_out, latent_size)
-        self.conv2 = EqualizedLRConv2d(channels_out, channels_out, kernel_size=3, padding=1)
-        self.layers2 = NoiseLReluNormStyle(channels_out, latent_size)
-
-    def forward(self, x, latents):
-        x = self.conv1(x)
-        x = self.layers1(x, latents[:,0])
-        x = self.conv2(x)
-        x = self.layers2(x, latents[:,1])
-        return x
-        
-class DiscrimLastBlockStyleGan(nn.Module):
-    def __init__(self, in_channels, mid_channels):
-        super(DiscrimLastBlockStyleGan, self).__init__()
-        self.first_layers = nn.Sequential(
-            AddStandardDeviationGrouped(4),
-            EqualizedLRConv2d(in_channels + 1, in_channels, kernel_size=3, padding=1),
-            nn.LeakyReLU(.2)
-        )
-        self.second_layers = nn.Sequential(
-            EqualizedLRLinear(in_channels * 4 * 4, mid_channels),
-            nn.LeakyReLU(.2),
-            EqualizedLRLinear(mid_channels, 1)
-        )
-    def forward(self, x):
-        x = self.first_layers(x)
-        x = x.view(x.size(0), -1)
-        x = self.second_layers(x)
-        return x
-
-
-class DiscrimBlockStyleGan(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super(DiscrimBlockStyleGan, self).__init__()
-        self.layers = nn.Sequential(
-            EqualizedLRConv2d(in_channels, in_channels, kernel_size=3, padding=1),
-            nn.LeakyReLU(.2),
-            BlurLayer(),
-            EqualizedConv2dDown(in_channels, out_channels, kernel_size=3),
-            nn.LeakyReLU(.2)
-        )
-
-    def forward(self, x):
-        return self.layers(x)

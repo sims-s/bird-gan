@@ -2,7 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from blocks_and_layers import *
-
+from stylegan_blocks import *
+from progan_blocks import *
 
 '''===================================Progan Models==============================================='''
 class ProGanGenerator(nn.Module):
@@ -186,7 +187,3 @@ class StyleGanDiscriminator(nn.Module):
                 x = layer(x)
             x = self.last_block(x)
             return x
-
-
-
-

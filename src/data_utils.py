@@ -5,14 +5,11 @@ import os
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
-def preview_img(img, x_bb=None, y_bb=None, width_bb=None, height_bb=None, class_name=None):
+def preview_img(img, x_bb=None, y_bb=None, width_bb=None, height_bb=None, title=None):
     ax = plt.gca()
-    
-    if class_name is not None:
-        plt.title(class_name)
-
+    if title is not None:
+        plt.title(title)
     plt.imshow(img)
-
     if x_bb:
         rect = patches.Rectangle((x_bb, y_bb),width_bb, height_bb, linewidth=2, edgecolor='r',facecolor='none')
         ax.add_patch(rect)

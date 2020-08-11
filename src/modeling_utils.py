@@ -64,9 +64,6 @@ def generate_noise(size, noise_size, device):
     return noise
 
 
-
-
-
 def plot_gen_images(gen, depth, fade_in, noise_size, device, save_path, save_samples):
     noise = generate_noise(16, noise_size, device=device)
     imgs = gen(noise, depth, fade_in).data.cpu().numpy()

@@ -8,18 +8,9 @@ import datetime
 import tqdm
 import warnings
 
-# Mostly inspired by: https://github.com/akanimax/pro_gan_pytorch/blob/master/pro_gan_pytorch/CustomLayers.py
-# function to calculate the Exponential moving averages for the Generator weights
+
 # This function updates the exponential average weights based on the current training
 def update_average(model_tgt, model_src, beta):
-    """
-    update the model_target using exponential moving averages
-    :param model_tgt: target model
-    :param model_src: source model
-    :param beta: value of decay beta
-    :return: None (updates the target model)
-    """
-
     # utility function for toggling the gradient requirements of the models
     def toggle_grad(model, requires_grad):
         for p in model.parameters():
