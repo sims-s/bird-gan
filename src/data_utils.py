@@ -1,6 +1,7 @@
 import numpy as np
 from PIL import Image
 import imageio
+import cv2
 import os
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -21,17 +22,19 @@ def downsize(img, target_width, target_height):
     curr_height = img.shape[1]
     curr_width = img.shape[0]
     
+    # Change height/width; scale to keep aspect ratio
     if curr_height > curr_width:
         new_height = target_height
         new_width  = int(new_height * curr_width / curr_height)
     else:
         new_width = target_width
         new_height = int(new_width * curr_height / curr_width)
-        
+    
     img = Image.fromarray(img)
     img = img.resize((new_height, new_width), Image.ANTIALIAS)
     img = np.array(img)
     
+    # Add padding to top & bottom or left and right
     first_axis_pad = target_width - img.shape[0]
     second_axis_pad = target_height - img.shape[1]
     
@@ -69,14 +72,14 @@ def process_boundingbox(x_bb, y_bb, width, height):
     return int(new_x_bb), int(new_y_bb), int(new_width), int(new_height)
     
 
-def preprocess_img(img_row, data_path, target_width, target_height, preview=True):
-    img = imageio.imread(data_path + img_row['fname'])
+def preprocess_img(img_row, target_width, target_height, preview=True):
+    img = imageio.imread(img_row['load_path'])
     # Smallest index should be 1 not zero to make the boubnding box appear on the image
     img_row['x_bb'] = max(img_row['x_bb'], 1)
     img_row['y_bb'] = max(img_row['y_bb'], 1)
     
     if preview:
-        print('Filename: ', img_row['fname'])
+        print('Filename: ', img_row['load_path'])
         print('Original size: ', img.shape)
         print('Image & Bounding box')
         preview_img(img, img_row['x_bb'], img_row['y_bb'], img_row['width_bb'], img_row['height_bb'], None)
@@ -99,14 +102,16 @@ def preprocess_img(img_row, data_path, target_width, target_height, preview=True
     return img
 
 
-def save_img(row, save_path, data_path, target_width, target_height, preview=False):
-    if os.path.exists(save_path + 'images/%s.jpg'%row['id']): 
+def save_img(row, save_path, target_width, target_height, preview=False):
+    save_name = save_path + '%d.jpg'%row['img_id']
+    if os.path.exists(save_name): 
         return
     try:
-        img = preprocess_img(row, data_path, target_width, target_height, preview=False)
+        img = preprocess_img(row, target_width, target_height, preview=preview)
     except ValueError:
-        print('skip: ', row['id'])
+        print('skip: ', row['img_id'])
         return 'FAILED'
+    # Denoise the image
+    img = cv2.fastNlMeansDenoisingColored(img, None, 3, 3, 5, 7)
     img = Image.fromarray(img[:,:,:3])
-    img.save(save_path + '%s.jpg'%row['id'])
-    return 
+    img.save(save_name, quality=95)
