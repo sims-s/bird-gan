@@ -14,22 +14,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-def load_df_convert_to_dict(path, source):
-    df = pd.read_csv(path + '%s/labels.csv'%source, usecols = ['id'])
-    df['load_path'] = df['id'].apply(lambda x: path + '%s/images/%s.jpg'%(source, x))
-    return df
-
-
-def get_label_dict(data_path):
-    sources = ['nabirds', 'cub', 'obd', 'flikr']
-    dfs = [load_df_convert_to_dict(data_path, source) for source in sources]
-    df = pd.concat(dfs)
-    df = df.reset_index(drop=True)
-    label_dict = df['load_path'].to_dict()
-    return label_dict
-
-
-
 class BirdDataset(torch.utils.data.Dataset):
     def __init__(self, data_dict, transform=None):
         self.data_dict = data_dict
@@ -49,7 +33,7 @@ def swap_channels_batch(batch):
     if isinstance(batch, np.ndarray):
         if batch.shape[3]==3:
             # batch size, width, height, channels
-            return np.moveaxis(batch, (1,2,3), (2,1,3))
+            return np.moveaxis(batch, (1,2,3), (2,3,1))
         else:
             # batch size, channels, widht height
             return np.moveaxis(batch, (1,2,3), (3,1,2))
@@ -63,40 +47,37 @@ def generate_noise(size, noise_size, device):
     noise = torch.randn(size, noise_size, device=device)
     return noise
 
-
-def plot_gen_images(gen, depth, fade_in, noise_size, device, save_path, save_samples):
+def sample_gen_images(gen, noise_size, device, process=True, **kwargs):
     noise = generate_noise(16, noise_size, device=device)
-    imgs = gen(noise, depth, fade_in).data.cpu().numpy()
+    imgs = gen(noise, **kwargs).data.cpu().numpy()
     imgs = swap_channels_batch(imgs)
     imgs = np.clip(imgs, 0, 1)
-    
+    return imgs
+
+def plot_imgs(imgs):
+    fig, axs = plt.subplots(4, 4)
+    fig.set_size_inches(8, 8)
+    for i in range(4):
+        for j in range(4):
+            axs[i,j].imshow(imgs[4*i+j])
+    plt.show()
+
+def save_imgs(imgs, save_path):
     fig, axs = plt.subplots(4,4)
     fig.set_size_inches(8,8)
     for i in range(4):
         for j in range(4):
             axs[i,j].imshow(imgs[4*i+j])
-    if save_samples:
-        fig = plt.gcf()
-        this_save_path = save_path + 'samples/'
-        if not os.path.exists(this_save_path):
-            os.mkdir(this_save_path)
-        files_in_folder = os.listdir(this_save_path)
-        nums_in_folder = [int(f[:f.find('.')]) for f in files_in_folder]
-        next_save_file = 0 if len(nums_in_folder)==0 else max(nums_in_folder) + 1
-        plt.savefig(this_save_path + str(next_save_file) + '.png')
-        plt.close(fig)
-    else:
-        plt.show()
-    
+    plt.savefig(save_path)
+    plt.close(fig)
 
-def save_gen_fixed_noise(gen, depth, fade_in, counter, fixed_noise, save_path):
+
+def save_gen_fixed_noise(gen, fixed_noise, save_path, save_idx, **kwargs):
     gen.eval()
-    this_save_path = save_path + 'imgs_fixed/'
-    if not os.path.exists(this_save_path):
-        os.mkdir(this_save_path)
-    if not os.path.exists(this_save_path + 'fixed_noise.npy'):
-        np.save(this_save_path + 'fixed_noise.npy', fixed_noise.data.cpu().numpy())
-    imgs = gen(fixed_noise, depth, fade_in).data.cpu().numpy()
+    if not os.path.exists(save_path + 'fixed_noise.npy'):
+        np.save(save_path + 'fixed_noise.npy', fixed_noise.data.cpu().numpy())
+
+    imgs = gen(fixed_noise, **kwargs).data.cpu().numpy()
     imgs= np.clip(imgs, 0, 1)
         
     imgs = swap_channels_batch(imgs)
@@ -105,8 +86,7 @@ def save_gen_fixed_noise(gen, depth, fade_in, counter, fixed_noise, save_path):
     for i in range(4):
         for j in range(4):
             axs[i,j].imshow(imgs[4*i+j])
-    plt.savefig(this_save_path + '%d_%d.png'%(depth, counter))
+    plt.savefig(save_path + '%d.png'%(save_idx))
     plt.close(fig)
-
 
 depth_to_img_size = lambda depth: 2**(depth+2)
