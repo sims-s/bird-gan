@@ -47,7 +47,7 @@ def generate_noise(size, noise_size, device):
     noise = torch.randn(size, noise_size, device=device)
     return noise
 
-def sample_gen_images(gen, noise_size, device, process=True, **kwargs):
+def sample_gen_images(gen, noise_size, device, **kwargs):
     noise = generate_noise(16, noise_size, device=device)
     imgs = gen(noise, **kwargs).data.cpu().numpy()
     imgs = swap_channels_batch(imgs)
@@ -86,7 +86,7 @@ def save_gen_fixed_noise(gen, fixed_noise, save_path, save_idx, **kwargs):
     for i in range(4):
         for j in range(4):
             axs[i,j].imshow(imgs[4*i+j])
-    plt.savefig(save_path + '%d.png'%(save_idx))
+    plt.savefig(save_path + 'step_%d.png'%(save_idx))
     plt.close(fig)
 
 depth_to_img_size = lambda depth: 2**(depth+2)
