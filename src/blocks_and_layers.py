@@ -152,6 +152,8 @@ class AddStandardDeviationGrouped(nn.Module):
     def forward(self, x):
         batch_size, channels, height, width = x.shape
         group_size = min(self.group_size, batch_size)
+        if batch_size % group_size:
+            group_size = batch_size
         y = x.reshape([group_size, -1, 1, channels, height, width])
         y = y - y.mean(0, keepdim=True)
         y = ((y**2).mean(0, keepdim=True) + 10**-8).sqrt()

@@ -9,6 +9,7 @@ import modeling_utils
 import datetime
 from tqdm.auto import tqdm
 import warnings
+from collections import defaultdict
 
 
 # This function updates the exponential average weights based on the current training
@@ -154,7 +155,6 @@ def discrim_loss_wasserstein_gp(discrim, real_images, fake_images, depth, alpha,
 
     grad = grad.view((grad.size()[0], -1))
     gradient_penalty = grad_pen_weight*((grad.norm(p=2, dim=1)-1)**2).mean()
-    # return fake_pred.mean() - real_pred.mean() + gradient_penalty + drift * (real_pred**2).mean()
     return fake_pred.mean(), real_pred.mean(), gradient_penalty, drift * (real_pred**2).mean()
     
 
@@ -179,26 +179,73 @@ def gen_step_wasserstein(gen, gen_opt, gen_ema, discrim, batch_noise, depth, alp
     gen_opt.zero_grad()
     loss.backward()
     gen_opt.step()
-    update_average(gen_ema, gen, .999)
     return loss.item()
 
 
-def train_on_depth_from_batch_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, fade_in, 
-                                x_batch, batch_noise, grad_pen_weight, device):
+def wasserstein_gp_batch(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, fade_in, 
+                                x_batch, batch_noise, device, grad_pen_weight, **kwargs):
 
     fake_pred, real_pred, gp, drift = discrim_step_wasserstein_gp(discrim, discrim_opt, gen, x_batch, \
                         batch_noise, depth, fade_in, grad_pen_weight, device)
     g_loss = gen_step_wasserstein(gen, gen_opt, gen_ema, discrim, batch_noise, depth, fade_in)
 
-    return fake_pred, real_pred, gp, drift, g_loss
+    return {"d_fake_pred" : fake_pred, "d_real_pred" : real_pred, "grad_pen" : gp, "g_loss" : g_loss, "drift" : drift, }
 
 
-def train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, nb_epochs, fade_in_pct,
-        loader, device, noise_size, grad_pen_weight, checkpoint_interval = -1, save_dir=None, print_metrics=False,
-        fixed_noise = None, plot_gen_samples=True, save_gen_samples=True, save_gen_fixed=True, tensorboard=True, fid=False):
+
+def discrim_loss_hinge(discrim, batch_real, batch_fake, depth, fade_in):
+    real_preds = discrim(batch_real, depth, fade_in)
+    fake_preds = discrim(batch_fake, depth, fade_in)
+
+    real_loss = torch.mean(F.relu(1-real_preds))
+    fake_loss = torch.mean(F.relu(1+fake_preds))
+    return real_loss, fake_loss
+
+def gen_loss_hinge(discrim, fake_imgs, depth, fade_in):
+    return -torch.mean(discrim(fake_imgs, depth, fade_in))
+
+def discrim_step_hinge(discrim, discrim_opt, gen, batch_real, batch_noise, depth, fade_in):
+    fake_images = gen(batch_noise, depth, fade_in).detach()
+    real_loss, fake_loss = discrim_loss_hinge(discrim, batch_real, fake_images, depth, fade_in)
+    loss = real_loss + fake_loss
+    discrim_opt.zero_grad()
+    loss.backward()
+    discrim_opt.step()
+    return real_loss.item(), fake_loss.item()
+
+def gen_step_hinge(gen, gen_opt, gen_ema, discrim, batch_noise, depth, fade_in):
+    fake_images = gen(batch_noise, depth, fade_in)
+    gen_loss = gen_loss_hinge(discrim, fake_images, depth, fade_in)
+    gen_opt.zero_grad()
+    gen_loss.backward()
+    gen_opt.step()
+    update_average(gen_ema, gen, .999)
+    return gen_loss.item()
+
+
+def hinge_batch(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, fade_in, x_batch, batch_noise, device, **kwargs):
+    d_real_loss, d_fake_loss = discrim_step_hinge(discrim, discrim_opt, gen, x_batch, batch_noise, depth, fade_in)
+    g_loss = gen_step_hinge(gen, gen_opt, gen_ema, discrim, batch_noise, depth, fade_in)
+    return {'d_loss_real' : d_real_loss, 'd_fake_loss' : d_fake_loss, 'g_loss' : g_loss}
+    
+
+def dict_mean(dictionary):
+    return {k : np.mean(v) for k, v in dictionary.items()}
+def list_dict_update(old, new):
+    for k, v in new.items():
+        old[k].append(v)
+    return old
+# getattr that function
+# pass aguments for taking a step into that function
+
+def train_on_depth_progan(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, nb_epochs, fade_in_pct,
+    loader, device, noise_size, loss, grad_step_every = 1, checkpoint_interval = -1, save_dir=None, print_metrics=False,
+    fixed_noise = None, plot_gen_samples=True, save_gen_samples=True, save_gen_fixed=True, tensorboard=True, 
+    fid=False, **kwargs):
     
     all_save_dirs = setup_model_save_directory(save_dir, save_gen_samples, save_gen_fixed, tensorboard)
     writer = setup_tensorboard(tensorboard, all_save_dirs['tensorboard'])
+    loss_function = globals()[loss]
 
     final_checkpoint, checkpoint_interval = get_checkpoint_interval(checkpoint_interval, loader)
     
@@ -206,16 +253,16 @@ def train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, d
     epoch_pbar = tqdm(total = nb_epochs, leave=False)
     for epoch in range(nb_epochs):
         batch_pbar = tqdm(total = len(loader), leave=False)
-        d_fake_pred_hist = []
-        d_real_pred_hist = []
-        gp_hist = []
-        drift_hist = []
-        g_loss_hist = []
+        metric_dict = defaultdict(list)
         for i, x_batch in enumerate(loader):
             gen.train()
             gen_ema.train()
             discrim.train()
-            fade_in = min(1, counter/(fade_in_pct * len(loader) * nb_epochs))
+            if fade_in_pct > 0:
+                fade_in = min(1, counter/(fade_in_pct * len(loader) * nb_epochs))
+            else:
+                fade_in = 1
+            
             if depth==0 or fade_in >= 1:
                 pass
             else:
@@ -225,37 +272,27 @@ def train_on_depth_wasserstein_gp(gen, gen_opt, gen_ema, discrim, discrim_opt, d
             
             batch_noise = modeling_utils.generate_noise(len(x_batch), noise_size, device)
             
-            fake_pred, real_pred, gp, drift, g_loss = train_on_depth_from_batch_wasserstein_gp(gen, gen_opt, \
-                                                        gen_ema, discrim, discrim_opt, depth, fade_in, \
-                                                        x_batch, batch_noise, grad_pen_weight, device)
-            d_fake_pred_hist.append(fake_pred)
-            d_real_pred_hist.append(real_pred)
-            gp_hist.append(gp)
-            drift_hist.append(drift)
-            g_loss_hist.append(g_loss)
+            this_batch_metrics = loss_function(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, fade_in, \
+                                                x_batch, batch_noise, device, **kwargs)
+            metric_dict = list_dict_update(metric_dict, this_batch_metrics)
 
             counter+=1
             if checkpoint_interval > 0 and i > 0 and not i % checkpoint_interval:
-                metric_dict = {'d_fake_score' : np.mean(d_fake_pred_hist), 'd_real_score' : np.mean(d_real_pred_hist),
-                              'grad_pen' : np.mean(gp_hist), 'drift' : np.mean(drift_hist), 'g_loss' : np.mean(g_loss_hist)}
+                metric_dict = dict_mean(metric_dict)
                 checkpoint(gen, gen_ema, discrim, device, noise_size, all_save_dirs, print_metrics, fixed_noise, plot_gen_samples,
                             save_gen_samples, save_gen_fixed, fid, tensorboard, writer, metric_dict, 
                             depth=depth, alpha=fade_in, model_desc="depth_%d_fade_%d"%(depth, int(100*min(fade_in, 1))))
-                d_fake_pred_hist = []
-                d_real_pred_hist = []
-                gp_hist = []
-                drift_hist = []
-                g_loss_hist = []
+                metric_dict = defaultdict(list)
 
             batch_pbar.update(1)
             
         epoch_pbar.update(1)
         batch_pbar.close()
         if final_checkpoint:
-            metric_dict = {'d_fake_score' : np.mean(d_fake_pred_hist), 'd_real_score' : np.mean(d_real_pred_hist),
-                                'grad_pen' : np.mean(gp_hist), 'drift' : np.mean(drift_hist), 'g_loss' : np.mean(g_loss_hist)}
+            metric_dict = dict_mean(metric_dict)
             checkpoint(gen, gen_ema, discrim, device, noise_size, all_save_dirs, print_metrics, fixed_noise, plot_gen_samples,
-                    save_gen_samples, save_gen_fixed, fid, tensorboard, writer, metric_dict, depth=depth, alpha=1)
+                    save_gen_samples, save_gen_fixed, fid, tensorboard, writer, metric_dict, depth=depth, alpha=1,
+                    model_desc="depth_%d_fade_%d"%(depth, int(100*min(fade_in, 1))))
     epoch_pbar.close()
     
 
