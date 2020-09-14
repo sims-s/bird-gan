@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import tqdm
+from tqdm.auto import tqdm
 
 import os
 import sys
@@ -88,5 +88,20 @@ def save_gen_fixed_noise(gen, fixed_noise, save_path, save_idx, **kwargs):
             axs[i,j].imshow(imgs[4*i+j])
     plt.savefig(save_path + 'step_%d.png'%(save_idx))
     plt.close(fig)
+
+
+def save_gen_fid_images(gen, noise_size, fid_dir, n_fid_samples, device, **kwargs):
+    batch_size = 32
+    nb_batches = n_fid_samples//batch_size + int((n_fid_samples % batch_size)==0)
+    pbar = tqdm(total = nb_batches, leave=False)
+    counter = 0
+    for i in range(nb_batches):
+        imgs = sample_gen_images(gen, noise_size, device, **kwargs)
+        for img in imgs:
+            pil_img = Image.fromarray((img*255).astype(np.uint8))
+            pil_img.save(fid_dir + "tmp_gen_images/" + '%d.jpg'%counter, quality=95)
+            counter += 1
+        pbar.update(1)
+    pbar.close()
 
 depth_to_img_size = lambda depth: 2**(depth+2)

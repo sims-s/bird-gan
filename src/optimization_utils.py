@@ -10,6 +10,7 @@ import datetime
 from tqdm.auto import tqdm
 import warnings
 from collections import defaultdict
+import fid_utils
 
 
 # This function updates the exponential average weights based on the current training
@@ -36,7 +37,8 @@ def update_average(model_tgt, model_src, beta):
 
 """General checkpointing functions and such"""
 def checkpoint(gen, gen_ema, discrim, device, noise_size, all_save_dirs, print_metrics, fixed_noise, plot_gen_samples, 
-                    save_gen_samples, save_gen_fixed, fid, tensorboard, writer, metric_dict, model_desc="", **kwargs):
+                    save_gen_samples, save_gen_fixed, fid, n_fid_samples, tensorboard, writer, metric_dict, model_desc="", 
+                    **kwargs):
     gen.eval()
     if gen_ema is not None:
         gen_ema.eval() 
@@ -66,7 +68,14 @@ def checkpoint(gen, gen_ema, discrim, device, noise_size, all_save_dirs, print_m
     else:
         samples = None
     if fid: #TODO
-        pass
+        print('making images...')
+        modeling_utils.save_gen_fid_images(gen_ema if gen_ema is not None else gen, noise_size, all_save_dirs['fid'], n_fid_samples, device, **kwargs)
+        print('calcuatling stats')
+        fid_utils.calculate_statistics_for_dataset(all_save_dirs['fid'] + 'tmp_gen_images/', all_save_dirs['fid'] + 'fake.npy', 8, device)
+        print('calcuatling fid')
+        metric_dict['fid'] = fid_utils.calculate_fid(all_save_dirs['fid'] + 'real.npy', all_save_dirs['fid'] + 'fake.npy')
+        print('cleaning up')
+        fid_utils.cleanup_fid(all_save_dirs['fid'])
     if print_metrics:
         print(metric_dict)
     if tensorboard:
@@ -89,7 +98,8 @@ def checkpoint(gen, gen_ema, discrim, device, noise_size, all_save_dirs, print_m
 
 
 """General functions for saving metrics"""
-def setup_model_save_directory(save_dir, save_gen_samples, save_gen_fixed, tensorboard):
+def setup_model_save_directory(save_dir, save_gen_samples, save_gen_fixed, tensorboard, 
+                    fid, n_fid_samples, fid_real_path, device):
     if not os.path.exists(save_dir):
         os.mkdir(save_dir)
 
@@ -97,6 +107,7 @@ def setup_model_save_directory(save_dir, save_gen_samples, save_gen_fixed, tenso
     fixed_dir = os.path.join(save_dir, 'fixed_samples/')
     model_dir = os.path.join(save_dir, 'models/')
     tensorboard_dir = os.path.join(save_dir, 'tensorboard/')
+    fid_dir = os.path.join(save_dir, 'fid/')
 
     if save_gen_samples and not os.path.exists(sample_dir):
         os.mkdir(sample_dir)
@@ -106,12 +117,19 @@ def setup_model_save_directory(save_dir, save_gen_samples, save_gen_fixed, tenso
         os.mkdir(model_dir)
     if tensorboard and not os.path.exists(tensorboard_dir):
         os.mkdir(tensorboard_dir)
+    if fid and not os.path.exists(fid_dir):
+        os.mkdir(fid_dir)
+        os.mkdir(fid_dir + 'tmp_gen_images/')
+        fid_utils.calculate_statistics_for_dataset(fid_real_path, fid_dir + 'real.npy', 
+                        8, device, n_fid_samples//8)
+
 
     return {
         'sample' : sample_dir,
         'fixed' : fixed_dir,
         'model' : model_dir,
-        'tensorboard' : tensorboard_dir
+        'tensorboard' : tensorboard_dir,
+        'fid' : fid_dir,
     }
 
 def setup_tensorboard(tensorboard, save_path):
@@ -241,9 +259,10 @@ def list_dict_update(old, new):
 def train_on_depth_progan(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, nb_epochs, fade_in_pct,
     loader, device, noise_size, loss, grad_step_every = 1, checkpoint_interval = -1, save_dir=None, print_metrics=False,
     fixed_noise = None, plot_gen_samples=True, save_gen_samples=True, save_gen_fixed=True, tensorboard=True, 
-    fid=False, **kwargs):
+    fid=False, n_fid_samples=10000, fid_real_path=None, **kwargs):
     
-    all_save_dirs = setup_model_save_directory(save_dir, save_gen_samples, save_gen_fixed, tensorboard)
+    all_save_dirs = setup_model_save_directory(save_dir, save_gen_samples, save_gen_fixed, tensorboard, 
+                        fid, n_fid_samples, fid_real_path, device)
     writer = setup_tensorboard(tensorboard, all_save_dirs['tensorboard'])
     loss_function = globals()[loss]
 
@@ -262,7 +281,6 @@ def train_on_depth_progan(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, nb
                 fade_in = min(1, counter/(fade_in_pct * len(loader) * nb_epochs))
             else:
                 fade_in = 1
-            
             if depth==0 or fade_in >= 1:
                 pass
             else:
@@ -280,7 +298,8 @@ def train_on_depth_progan(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, nb
             if checkpoint_interval > 0 and i > 0 and not i % checkpoint_interval:
                 metric_dict = dict_mean(metric_dict)
                 checkpoint(gen, gen_ema, discrim, device, noise_size, all_save_dirs, print_metrics, fixed_noise, plot_gen_samples,
-                            save_gen_samples, save_gen_fixed, fid, tensorboard, writer, metric_dict, 
+                            save_gen_samples, save_gen_fixed, fid and i > int(.98*len(loader)), n_fid_samples, 
+                            tensorboard, writer, metric_dict, 
                             depth=depth, alpha=fade_in, model_desc="depth_%d_fade_%d"%(depth, int(100*min(fade_in, 1))))
                 metric_dict = defaultdict(list)
 
@@ -291,7 +310,7 @@ def train_on_depth_progan(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, nb
         if final_checkpoint:
             metric_dict = dict_mean(metric_dict)
             checkpoint(gen, gen_ema, discrim, device, noise_size, all_save_dirs, print_metrics, fixed_noise, plot_gen_samples,
-                    save_gen_samples, save_gen_fixed, fid, tensorboard, writer, metric_dict, depth=depth, alpha=1,
+                    save_gen_samples, save_gen_fixed, fid, n_fid_samples, tensorboard, writer, metric_dict, depth=depth, alpha=1,
                     model_desc="depth_%d_fade_%d"%(depth, int(100*min(fade_in, 1))))
     epoch_pbar.close()
     
