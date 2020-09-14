@@ -298,7 +298,7 @@ def train_on_depth_progan(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, nb
             if checkpoint_interval > 0 and i > 0 and not i % checkpoint_interval:
                 metric_dict = dict_mean(metric_dict)
                 checkpoint(gen, gen_ema, discrim, device, noise_size, all_save_dirs, print_metrics, fixed_noise, plot_gen_samples,
-                            save_gen_samples, save_gen_fixed, fid and i > int(.98*len(loader)), n_fid_samples, 
+                            save_gen_samples, save_gen_fixed, fid and i > int(.98*len(loader))  , n_fid_samples, 
                             tensorboard, writer, metric_dict, 
                             depth=depth, alpha=fade_in, model_desc="depth_%d_fade_%d"%(depth, int(100*min(fade_in, 1))))
                 metric_dict = defaultdict(list)
