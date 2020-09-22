@@ -94,7 +94,7 @@ class StyleGanMapping(nn.Module):
             x = x.unsqueeze(1).expand(-1, self.num_copies, -1).contiguous()
         return x
 
-def num_feats_per_layer(layer_index, base=8192, decay=1, max_val=128):
+def num_feats_per_layer(layer_index, base=8192, decay=1, max_val=512):
     return min(int(base / (2 **((layer_index+1) * decay))), max_val)
 
 class StyleGanGenSynthesis(nn.Module):
@@ -103,13 +103,13 @@ class StyleGanGenSynthesis(nn.Module):
 
         self.max_depth = max_depth
 
-        self.first_layer = FirstGenBlockStyleGan(num_feats_per_layer(0), latent_size)
-        self.rgb_out_layers = nn.ModuleList([EqualizedLRConv2d(num_feats_per_layer(0), 3, (1,1))])
+        self.first_layer = FirstGenBlockStyleGan(num_feats_per_layer(0, max_val=latent_size), latent_size)
+        self.rgb_out_layers = nn.ModuleList([EqualizedLRConv2d(num_feats_per_layer(0, max_val=latent_size), 3, (1,1))])
         self.layers = nn.ModuleList()
 
         for i in range(1, max_depth):
-            prev_features = num_feats_per_layer(i-1)
-            this_features = num_feats_per_layer(i)
+            prev_features = num_feats_per_layer(i-1, max_val=latent_size)
+            this_features = num_feats_per_layer(i, max_val=latent_size)
             self.layers.append(GenBlockStyleGan(prev_features, this_features, latent_size))
             self.rgb_out_layers.append(EqualizedLRConv2d(this_features, 3, 1))
 
@@ -166,12 +166,12 @@ class StyleGanDiscriminator(nn.Module):
         self.last_block = DiscrimLastBlockStyleGan(latent_size, latent_size)
 
         for i in range(self.max_depth-1, 0, -1):
-            in_channels = num_feats_per_layer(i)
-            out_channels = num_feats_per_layer(i-1)
+            in_channels = num_feats_per_layer(i, max_val=latent_size)
+            out_channels = num_feats_per_layer(i-1, max_val=latent_size)
             self.layers.append(DiscrimBlockStyleGan(in_channels, out_channels))
             self.from_rgb.append(EqualizedLRConv2d(3, in_channels, (1,1)))
 
-        self.from_rgb.append(EqualizedLRConv2d(3, num_feats_per_layer(1), (1,1)))
+        self.from_rgb.append(EqualizedLRConv2d(3, num_feats_per_layer(1, max_val=latent_size), (1,1)))
 
 
     def forward(self, x, depth, alpha):

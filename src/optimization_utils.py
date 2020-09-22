@@ -67,14 +67,10 @@ def checkpoint(gen, gen_ema, discrim, device, noise_size, all_save_dirs, print_m
             modeling_utils.save_imgs(samples, all_save_dirs['sample'] + 'step_%d.png'%save_idx)
     else:
         samples = None
-    if fid: #TODO
-        print('making images...')
+    if fid:
         modeling_utils.save_gen_fid_images(gen_ema if gen_ema is not None else gen, noise_size, all_save_dirs['fid'], n_fid_samples, device, **kwargs)
-        print('calcuatling stats')
         fid_utils.calculate_statistics_for_dataset(all_save_dirs['fid'] + 'tmp_gen_images/', all_save_dirs['fid'] + 'fake.npy', 8, device)
-        print('calcuatling fid')
         metric_dict['fid'] = fid_utils.calculate_fid(all_save_dirs['fid'] + 'real.npy', all_save_dirs['fid'] + 'fake.npy')
-        print('cleaning up')
         fid_utils.cleanup_fid(all_save_dirs['fid'])
     if print_metrics:
         print(metric_dict)
@@ -92,6 +88,7 @@ def checkpoint(gen, gen_ema, discrim, device, noise_size, all_save_dirs, print_m
 
         if fixed_noise is not None:
             fixed_samples = gen_ema(fixed_noise, **kwargs) if gen_ema is not None else gen(fixed_noise, **kwargs)
+            fixed_samples = torch.clamp(fixed_samples, 0, 1)
             grid = torchvision.utils.make_grid(fixed_samples).unsqueeze(0)
             writer.add_images('fixed_samples', grid, save_idx)
 
@@ -210,7 +207,7 @@ def wasserstein_gp_batch(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, fad
     return {"d_fake_pred" : fake_pred, "d_real_pred" : real_pred, "grad_pen" : gp, "g_loss" : g_loss, "drift" : drift, }
 
 
-
+"""optimization steps for hinge loss"""
 def discrim_loss_hinge(discrim, batch_real, batch_fake, depth, fade_in):
     real_preds = discrim(batch_real, depth, fade_in)
     fake_preds = discrim(batch_fake, depth, fade_in)
@@ -245,7 +242,48 @@ def hinge_batch(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, fade_in, x_b
     d_real_loss, d_fake_loss = discrim_step_hinge(discrim, discrim_opt, gen, x_batch, batch_noise, depth, fade_in)
     g_loss = gen_step_hinge(gen, gen_opt, gen_ema, discrim, batch_noise, depth, fade_in)
     return {'d_loss_real' : d_real_loss, 'd_fake_loss' : d_fake_loss, 'g_loss' : g_loss}
+
+"""Optimization steps for relativistic-hinge"""
+def discrim_loss_rel_hinge(discrim, batch_real, fake_images, depth, fade_in):
+    real_preds = discrim(batch_real, depth, fade_in)
+    fake_preds = discrim(fake_images, depth, fade_in)
     
+    real_minus_fake = real_preds - torch.mean(fake_preds)
+    fake_minus_real = fake_preds - torch.mean(real_preds)
+
+    return torch.mean(F.relu(1-real_minus_fake)), torch.mean(F.relu(1+fake_minus_real))
+
+def gen_loss_rel_hinge(discrim, fake_imgs, real_imgs, depth, fade_in):
+    real_preds = discrim(real_imgs, depth, fade_in)
+    fake_preds = discrim(fake_imgs, depth, fade_in)
+
+    real_minus_fake = real_preds - torch.mean(fake_preds)
+    fake_minus_real = fake_preds - torch.mean(real_preds)
+
+    return torch.mean(F.relu(1+real_minus_fake)) + torch.mean(F.relu(1-fake_minus_real))
+
+def discrim_step_rel_hinge(discrim, discrim_opt, gen, batch_real, batch_noise, depth, fade_in):
+    fake_images = gen(batch_noise, depth, fade_in).detach()
+    real_loss, fake_loss = discrim_loss_rel_hinge(discrim, batch_real, fake_images, depth, fade_in)
+    loss = real_loss + fake_loss
+    discrim_opt.zero_grad()
+    loss.backward()
+    discrim_opt.step()
+    return real_loss.item(), fake_loss.item()
+
+def gen_step_rel_hinge(gen, gen_opt, gen_ema, discrim, batch_real, batch_noise, depth, fade_in):
+    fake_images = gen(batch_noise, depth, fade_in)
+    gen_loss = gen_loss_rel_hinge(discrim, fake_images, batch_real, depth, fade_in)
+    gen_opt.zero_grad()
+    gen_loss.backward()
+    gen_opt.step()
+    update_average(gen_ema, gen, .999)
+    return gen_loss.item()
+
+def relativistic_hinge_batch(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, fade_in, x_batch, batch_noise, device, **kwargs):
+    d_real_loss, d_fake_loss = discrim_step_rel_hinge(discrim, discrim_opt, gen, x_batch, batch_noise, depth, fade_in)
+    g_loss = gen_step_rel_hinge(gen, gen_opt, gen_ema, discrim, x_batch, batch_noise, depth, fade_in)
+    return {'d_loss_real' : d_real_loss, 'd_fake_loss' : d_fake_loss, 'g_loss' : g_loss}
 
 def dict_mean(dictionary):
     return {k : np.mean(v) for k, v in dictionary.items()}
@@ -253,8 +291,6 @@ def list_dict_update(old, new):
     for k, v in new.items():
         old[k].append(v)
     return old
-# getattr that function
-# pass aguments for taking a step into that function
 
 def train_on_depth_progan(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, nb_epochs, fade_in_pct,
     loader, device, noise_size, loss, grad_step_every = 1, checkpoint_interval = -1, save_dir=None, print_metrics=False,
@@ -298,7 +334,7 @@ def train_on_depth_progan(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, nb
             if checkpoint_interval > 0 and i > 0 and not i % checkpoint_interval:
                 metric_dict = dict_mean(metric_dict)
                 checkpoint(gen, gen_ema, discrim, device, noise_size, all_save_dirs, print_metrics, fixed_noise, plot_gen_samples,
-                            save_gen_samples, save_gen_fixed, fid and i > int(.98*len(loader))  , n_fid_samples, 
+                            save_gen_samples, save_gen_fixed, fid and i > int(.98*len(loader)), n_fid_samples, 
                             tensorboard, writer, metric_dict, 
                             depth=depth, alpha=fade_in, model_desc="depth_%d_fade_%d"%(depth, int(100*min(fade_in, 1))))
                 metric_dict = defaultdict(list)
