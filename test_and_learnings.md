@@ -6,6 +6,8 @@
 
 * Regularization
     * R1
+      * Scale penalty based on number of output features
+      * Some hints that this being higher might be helpful
     * Spectral
 
 ### Archiecture Choices
@@ -18,6 +20,11 @@
 
 ### Data Choices
 * \# of epochs per size
+
+### Normalization
+* Does normalizing the input data help at all?
+  * We do it for nomral cnns, why not for these cnns?
+  * Easy to unnormalize the output of the generator
 
 # Assumptions/Hopes
 * Latent Size
@@ -50,4 +57,4 @@ Default LRs:
 |   |   |   |   |   |   |   |
 |   |   |   |   |   |   |   |
 Folder name structure:
-[loss_function]_[model_part_lr, if different than default]
+[loss_function]\_[model_part_lr, if different than default]\_[regularization_and_amount, if different than default]
