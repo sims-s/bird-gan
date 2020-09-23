@@ -194,12 +194,12 @@ def gen_step_wasserstein(gen, gen_opt, gen_ema, discrim, batch_noise, depth, alp
     gen_opt.zero_grad()
     loss.backward()
     gen_opt.step()
+    update_average(gen_ema, gen, .999)
     return loss.item()
 
 
 def wasserstein_gp_batch(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, fade_in, 
                                 x_batch, batch_noise, device, grad_pen_weight, **kwargs):
-
     fake_pred, real_pred, gp, drift = discrim_step_wasserstein_gp(discrim, discrim_opt, gen, x_batch, \
                         batch_noise, depth, fade_in, grad_pen_weight, device)
     g_loss = gen_step_wasserstein(gen, gen_opt, gen_ema, discrim, batch_noise, depth, fade_in)
