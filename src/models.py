@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from blocks_and_layers import *
 from stylegan_blocks import *
 from progan_blocks import *
+import modeling_utils
 
 '''===================================Progan Models==============================================='''
 class ProGanGenerator(nn.Module):
@@ -140,8 +141,10 @@ class StyleGanGenerator(nn.Module):
     def forward(self, latents, depth, alpha):
         mapped_latents = self.mapping_layers(latents)
         if self.training:
-            self.truncation.update(mapped_latents[0,0].detach())
+            self.truncation.update(mapped_latents[:,0].detach().mean(dim=0))
 
+            # Getting secondl latents should also use modeling_utils.generate_noise... gotta double chekc the sizes
+            # second_latents = modeling_utils.generate_noise(len(latents), latents.size(1), latents.device)
             second_latents = torch.randn(latents.shape).to(latents.device)
             second_mapped_latents = self.mapping_layers(second_latents)
             # Have max_depth*2 style blocks

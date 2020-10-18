@@ -36,7 +36,7 @@ def update_average(model_tgt, model_src, beta):
     toggle_grad(model_src, True)
 
 """General checkpointing functions and such"""
-def checkpoint(gen, gen_ema, discrim, device, noise_size, all_save_dirs, print_metrics, fixed_noise, plot_gen_samples, 
+def checkpoint(gen, gen_ema, discrim, gen_opt, discrim_opt, device, noise_size, all_save_dirs, print_metrics, fixed_noise, plot_gen_samples, 
                     save_gen_samples, save_gen_fixed, fid, n_fid_samples, tensorboard, writer, metric_dict, model_desc="", 
                     **kwargs):
     gen.eval()
@@ -46,11 +46,15 @@ def checkpoint(gen, gen_ema, discrim, device, noise_size, all_save_dirs, print_m
     if len(model_desc) > 0:
         torch.save(gen.state_dict(), all_save_dirs['model'] + 'gen_%s_step_%d.pt'%(model_desc, save_idx))
         torch.save(discrim.state_dict(), all_save_dirs['model'] + 'discrim_%s_step_%d.pt'%(model_desc, save_idx))
+        torch.save(gen_opt.state_dict(), all_save_dirs['model'] + 'gen_opt_%s_step_%d.pt'%(model_desc, save_idx))
+        torch.save(discrim_opt.state_dict(), all_save_dirs['model'] + 'discrim_opt_%s_step_%d.pt'%(model_desc, save_idx))
         if gen_ema is not None:
             torch.save(gen_ema.state_dict(), all_save_dirs['model'] + 'gen_ema_%s_step_%d.pt'%(model_desc, save_idx))
     else:
         torch.save(gen.state_dict(), all_save_dirs['model'] + 'gen_step_%d.pt'%save_idx)
         torch.save(discrim.state_dict(), all_save_dirs['model'] + 'discrim_step_%d.pt'%save_idx)
+        torch.save(gen_opt.state_dict(), all_save_dirs['model'] + 'gen_opt_step_%d.pt'%(save_idx))
+        torch.save(discrim_opt.state_dict(), all_save_dirs['model'] + 'discrim_opt_step_%d.pt'%(save_idx))
         if gen_ema is not None:
             torch.save(gen_ema.state_dict(), all_save_dirs['model'] + 'gen_ema_step_%d.pt'%save_idx)
     
@@ -83,13 +87,14 @@ def checkpoint(gen, gen_ema, discrim, device, noise_size, all_save_dirs, print_m
                                                         noise_size, device, **kwargs)
         samples = modeling_utils.swap_channels_batch(samples)
         samples = torch.tensor(samples)
-        grid = torchvision.utils.make_grid(samples).unsqueeze(0)
+        grid = torchvision.utils.make_grid(samples, normalize=False).unsqueeze(0)
         writer.add_images('random_samples', grid, save_idx)
 
         if fixed_noise is not None:
-            fixed_samples = gen_ema(fixed_noise, **kwargs) if gen_ema is not None else gen(fixed_noise, **kwargs)
-            fixed_samples = torch.clamp(fixed_samples, 0, 1)
-            grid = torchvision.utils.make_grid(fixed_samples).unsqueeze(0)
+            fixed_samples = modeling_utils.sample_gen_images(gen_ema if gen_ema is not None else gen, noise_size, device, noise=fixed_noise)
+            fixed_samples = modeling_utils.swap_channels_batch(fixed_samples)
+            fixed_samples = torch.tensor(fixed_samples)
+            grid = torchvision.utils.make_grid(fixed_samples, normalize=False).unsqueeze(0)
             writer.add_images('fixed_samples', grid, save_idx)
 
 
@@ -285,6 +290,49 @@ def relativistic_hinge_batch(gen, gen_opt, gen_ema, discrim, discrim_opt, depth,
     g_loss = gen_step_rel_hinge(gen, gen_opt, gen_ema, discrim, x_batch, batch_noise, depth, fade_in)
     return {'d_loss_real' : d_real_loss, 'd_fake_loss' : d_fake_loss, 'g_loss' : g_loss}
 
+"""Optimization steps for logisic R-1"""
+def discrim_loss_log_r1(discrim, batch_real, batch_fake, depth, fade_in, grad_pen_weight):
+    real_loss = torch.mean(F.softplus(-discrim(batch_real, depth, fade_in)))
+    fake_loss = torch.mean(F.softplus(discrim(batch_fake, depth, fade_in)))
+
+    batch_real.requires_grad = True
+    real_logit = discrim(batch_real, depth, fade_in)
+    real_grad = torch.autograd.grad(outputs=real_logit, inputs=batch_real, 
+                grad_outputs=torch.ones(real_logit.size()).to(batch_real.device),
+                create_graph=True, retain_graph=True)[0].view(batch_real.size(0), -1)
+    grad_pen = grad_pen_weight * torch.sum(torch.mul(real_grad, real_grad))
+    return real_loss, fake_loss, grad_pen
+
+def gen_loss_log_r1(discrim, fake_imgs, depth, fade_in):
+    return torch.mean(F.softplus(-discrim(fake_imgs, depth, fade_in)))
+
+def discrim_step_log_r1(discrim, discrim_opt, gen, batch_real, batch_noise, depth, fade_in, grad_pen_weight):
+    fake_images = gen(batch_noise, depth, fade_in).detach()
+    real_loss, fake_loss, grad_pen = discrim_loss_log_r1(discrim, batch_real, fake_images, depth, fade_in, grad_pen_weight)
+    
+    loss = real_loss + fake_loss + grad_pen
+    discrim_opt.zero_grad()
+    loss.backward()
+    discrim_opt.step()
+    return real_loss.item(), fake_loss.item(), grad_pen.item()
+
+def gen_step_log_r1(gen, gen_opt, gen_ema, discrim, batch_noise, depth, fade_in):
+    fake_images = gen(batch_noise, depth, fade_in)
+    gen_loss = gen_loss_log_r1(discrim, fake_images, depth, fade_in)
+    gen_opt.zero_grad()
+    gen_loss.backward()
+    gen_opt.step()
+    update_average(gen_ema, gen, .999)
+    return gen_loss.item()
+
+
+def log_r1_batch(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, fade_in, x_batch, batch_noise, device, grad_pen_weight, **kwargs):
+    d_real_loss, d_fake_loss, grad_pen = discrim_step_log_r1(discrim, discrim_opt, gen, x_batch, 
+                                        batch_noise, depth, fade_in, grad_pen_weight)
+    g_loss = gen_step_log_r1(gen, gen_opt, gen_ema, discrim, batch_noise, depth, fade_in)
+    return {'d_loss_real' : d_real_loss, 'd_fake_loss' : d_fake_loss, 'g_loss' : g_loss, 'grad_pen' : grad_pen}
+
+
 def dict_mean(dictionary):
     return {k : np.mean(v) for k, v in dictionary.items()}
 def list_dict_update(old, new):
@@ -333,7 +381,7 @@ def train_on_depth_progan(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, nb
             counter+=1
             if checkpoint_interval > 0 and i > 0 and not i % checkpoint_interval:
                 metric_dict = dict_mean(metric_dict)
-                checkpoint(gen, gen_ema, discrim, device, noise_size, all_save_dirs, print_metrics, fixed_noise, plot_gen_samples,
+                checkpoint(gen, gen_ema, discrim, gen_opt, discrim_opt, device, noise_size, all_save_dirs, print_metrics, fixed_noise, plot_gen_samples,
                             save_gen_samples, save_gen_fixed, fid and i > int(.98*len(loader)), n_fid_samples, 
                             tensorboard, writer, metric_dict, 
                             depth=depth, alpha=fade_in, model_desc="depth_%d_fade_%d"%(depth, int(100*min(fade_in, 1))))
@@ -345,7 +393,7 @@ def train_on_depth_progan(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, nb
         batch_pbar.close()
         if final_checkpoint:
             metric_dict = dict_mean(metric_dict)
-            checkpoint(gen, gen_ema, discrim, device, noise_size, all_save_dirs, print_metrics, fixed_noise, plot_gen_samples,
+            checkpoint(gen, gen_ema, discrim, gen_opt, discrim_opt, device, noise_size, all_save_dirs, print_metrics, fixed_noise, plot_gen_samples,
                     save_gen_samples, save_gen_fixed, fid, n_fid_samples, tensorboard, writer, metric_dict, depth=depth, alpha=1,
                     model_desc="depth_%d_fade_%d"%(depth, int(100*min(fade_in, 1))))
     epoch_pbar.close()

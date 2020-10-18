@@ -41,17 +41,28 @@ def swap_channels_batch(batch):
         if batch.size()[3]==3:
             return batch.permute(0,3,1,2).contiguous()
         else:
-            return batch.permute(0,2,1,3).contiguous()
+            return batch.permute(0,2,3,1).contiguous()
 
-def generate_noise(size, noise_size, device):
+def generate_noise(size, noise_size, device, seed=None):
+    if seed:
+        torch.manual_seed(seed)
     noise = torch.randn(size, noise_size, device=device)
     return noise
 
-def sample_gen_images(gen, noise_size, device, **kwargs):
-    noise = generate_noise(16, noise_size, device=device)
+def sample_gen_images(gen, noise_size, device, noise=None, **kwargs):
+    if noise is None:
+        noise = generate_noise(16, noise_size, device=device)
     imgs = gen(noise, **kwargs).data.cpu().numpy()
     imgs = swap_channels_batch(imgs)
-    imgs = np.clip(imgs, 0, 1)
+    imgs = post_model_process(imgs)
+    return imgs
+
+def post_model_process(imgs):
+    if torch.is_tensor(imgs):
+        imgs = imgs.data.cpu().numpy()
+    min_val = np.min(imgs, axis=(1,2,3)).reshape((-1,1,1,1))
+    max_val = np.max(imgs, axis=(1,2,3)).reshape((-1,1,1,1))
+    imgs = (imgs - min_val) / (max_val - min_val)
     return imgs
 
 def plot_imgs(imgs):
