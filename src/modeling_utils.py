@@ -49,9 +49,9 @@ def generate_noise(size, noise_size, device, seed=None):
     noise = torch.randn(size, noise_size, device=device)
     return noise
 
-def sample_gen_images(gen, noise_size, device, noise=None, **kwargs):
+def sample_gen_images(gen, noise_size, device, noise=None, batch_size=16, **kwargs):
     if noise is None:
-        noise = generate_noise(16, noise_size, device=device)
+        noise = generate_noise(batch_size, noise_size, device=device)
     imgs = gen(noise, **kwargs).data.cpu().numpy()
     imgs = swap_channels_batch(imgs)
     imgs = post_model_process(imgs)
@@ -85,8 +85,8 @@ def save_imgs(imgs, save_path):
 
 def save_gen_fixed_noise(gen, fixed_noise, save_path, save_idx, **kwargs):
     gen.eval()
-    if not os.path.exists(save_path + 'fixed_noise.npy'):
-        np.save(save_path + 'fixed_noise.npy', fixed_noise.data.cpu().numpy())
+    # if not os.path.exists(save_path + 'fixed_noise.npy'):
+    #     np.save(save_path + 'fixed_noise.npy', fixed_noise.data.cpu().numpy())
 
     imgs = gen(fixed_noise, **kwargs).data.cpu().numpy()
     imgs= np.clip(imgs, 0, 1)
@@ -97,17 +97,18 @@ def save_gen_fixed_noise(gen, fixed_noise, save_path, save_idx, **kwargs):
     for i in range(4):
         for j in range(4):
             axs[i,j].imshow(imgs[4*i+j])
-    plt.savefig(save_path + 'step_%d.png'%(save_idx))
+    # plt.savefig(save_path + 'step_%d.png'%(save_idx))
+    plt.savefig(save_path + '%d.png'%(save_idx))
     plt.close(fig)
 
 
 def save_gen_fid_images(gen, noise_size, fid_dir, n_fid_samples, device, **kwargs):
-    batch_size = 32
+    batch_size = 16
     nb_batches = n_fid_samples//batch_size + int((n_fid_samples % batch_size)==0)
     pbar = tqdm(total = nb_batches, leave=False)
     counter = 0
     for i in range(nb_batches):
-        imgs = sample_gen_images(gen, noise_size, device, **kwargs)
+        imgs = sample_gen_images(gen, noise_size, device, batch_size=batch_size, **kwargs)
         for img in imgs:
             pil_img = Image.fromarray((img*255).astype(np.uint8))
             pil_img.save(fid_dir + "tmp_gen_images/" + '%d.jpg'%counter, quality=95)

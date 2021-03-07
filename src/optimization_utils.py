@@ -75,7 +75,8 @@ def checkpoint(gen, gen_ema, discrim, gen_opt, discrim_opt, device, noise_size, 
         modeling_utils.save_gen_fid_images(gen_ema if gen_ema is not None else gen, noise_size, all_save_dirs['fid'], n_fid_samples, device, **kwargs)
         fid_utils.calculate_statistics_for_dataset(all_save_dirs['fid'] + 'tmp_gen_images/', all_save_dirs['fid'] + 'fake.npy', 8, device)
         metric_dict['fid'] = fid_utils.calculate_fid(all_save_dirs['fid'] + 'real.npy', all_save_dirs['fid'] + 'fake.npy')
-        fid_utils.cleanup_fid(all_save_dirs['fid'])
+        #fid_utils.cleanup_fid(all_save_dirs['fid'])
+        print("done with fid")
     if print_metrics:
         print(metric_dict)
     if tensorboard:
@@ -91,7 +92,7 @@ def checkpoint(gen, gen_ema, discrim, gen_opt, discrim_opt, device, noise_size, 
         writer.add_images('random_samples', grid, save_idx)
 
         if fixed_noise is not None:
-            fixed_samples = modeling_utils.sample_gen_images(gen_ema if gen_ema is not None else gen, noise_size, device, noise=fixed_noise)
+            fixed_samples = modeling_utils.sample_gen_images(gen_ema if gen_ema is not None else gen, noise_size, device, noise=fixed_noise, **kwargs)
             fixed_samples = modeling_utils.swap_channels_batch(fixed_samples)
             fixed_samples = torch.tensor(fixed_samples)
             grid = torchvision.utils.make_grid(fixed_samples, normalize=False).unsqueeze(0)
@@ -379,7 +380,9 @@ def train_on_depth_progan(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, nb
             metric_dict = list_dict_update(metric_dict, this_batch_metrics)
 
             counter+=1
-            if checkpoint_interval > 0 and i > 0 and not i % checkpoint_interval:
+            # Checkpoint if (in order):
+            # We want to, it's not the first thing of the batch, it's the right time and we're not about to do the final checkpoint
+            if checkpoint_interval > 0 and i > 0 and not i % checkpoint_interval and not (final_checkpoint and i > len(loader)-10):
                 metric_dict = dict_mean(metric_dict)
                 checkpoint(gen, gen_ema, discrim, gen_opt, discrim_opt, device, noise_size, all_save_dirs, print_metrics, fixed_noise, plot_gen_samples,
                             save_gen_samples, save_gen_fixed, fid and i > int(.98*len(loader)), n_fid_samples, 
@@ -394,7 +397,7 @@ def train_on_depth_progan(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, nb
         if final_checkpoint:
             metric_dict = dict_mean(metric_dict)
             checkpoint(gen, gen_ema, discrim, gen_opt, discrim_opt, device, noise_size, all_save_dirs, print_metrics, fixed_noise, plot_gen_samples,
-                    save_gen_samples, save_gen_fixed, fid, n_fid_samples, tensorboard, writer, metric_dict, depth=depth, alpha=1,
+                    save_gen_samples, save_gen_fixed, fid, n_fid_samples, tensorboard, writer, metric_dict, depth=depth, alpha=fade_in,
                     model_desc="depth_%d_fade_%d"%(depth, int(100*min(fade_in, 1))))
     epoch_pbar.close()
     
@@ -403,9 +406,9 @@ def train_on_depth_progan(gen, gen_opt, gen_ema, discrim, discrim_opt, depth, nb
 """Optimization steps for traditional gan"""
 def train_for_epoch_traditional(gen, gen_opt, discrim, discrim_opt, loader, device, noise_size, discrim_noise_level, 
     checkpoint_interval = -1, save_dir=None, print_metrics=False, fixed_noise=None, plot_gen_samples=True, 
-    save_gen_samples=True, save_gen_fixed=True, tensorboard=True, fid=False, **kwargs):
+    save_gen_samples=True, save_gen_fixed=True, tensorboard=True, fid=False, n_fid_samples=10000, fid_real_path=None, epoch_nb=0,**kwargs):
 
-    all_save_dirs = setup_model_save_directory(save_dir, save_gen_samples, save_gen_fixed, tensorboard)
+    all_save_dirs = setup_model_save_directory(save_dir, save_gen_samples, save_gen_fixed, tensorboard, fid, n_fid_samples, fid_real_path, device)
     writer = setup_tensorboard(tensorboard, all_save_dirs['tensorboard'])
 
     d_real_loss_hist = []
@@ -435,16 +438,16 @@ def train_for_epoch_traditional(gen, gen_opt, discrim, discrim_opt, loader, devi
             gen_loss_hist = []
             d_real_pred_hist = []
             d_fake_pred_hist = []
-            checkpoint(gen, None, discrim, device, noise_size, all_save_dirs, print_metrics, fixed_noise, plot_gen_samples, 
-                        save_gen_samples, save_gen_fixed, fid, tensorboard, writer, metric_dict, **kwargs)
+            checkpoint(gen, None, discrim, gen_opt, discrim_opt, device, noise_size, all_save_dirs, print_metrics, fixed_noise, plot_gen_samples,
+                    save_gen_samples, save_gen_fixed, fid, n_fid_samples, tensorboard, writer, metric_dict, 'epoch_%d_batch_%d'%(epoch_nb, i), **kwargs)
         pbar.update(1)
     pbar.close()
     metric_dict = {'d_real_loss' : np.mean(d_real_loss_hist), 'd_real_pred' : np.mean(d_real_pred_hist),
                             'd_fake_loss' : np.mean(d_fake_loss_hist), 'd_fake_pred' : np.mean(d_fake_pred_hist),
                             'g_loss' : np.mean(gen_loss_hist)}
     if final_checkpoint:
-        checkpoint(gen, None, discrim, device, noise_size, all_save_dirs, print_metrics, fixed_noise, plot_gen_samples, 
-                        save_gen_samples, save_gen_fixed, fid, tensorboard, writer, metric_dict, **kwargs)
+        checkpoint(gen, None, discrim, gen_opt, discrim_opt, device, noise_size, all_save_dirs, print_metrics, fixed_noise, plot_gen_samples,
+                    save_gen_samples, save_gen_fixed, fid, n_fid_samples, tensorboard, writer, metric_dict, 'epoch_%d_batch_%d'%(epoch_nb, len(loader)), **kwargs)
 
 def train_on_batch_traditional(gen, gen_opt, discrim, discrim_opt, batch, device, noise_size, discrim_noise_level):
     bce_loss = nn.BCEWithLogitsLoss()
@@ -457,7 +460,7 @@ def train_on_batch_traditional(gen, gen_opt, discrim, discrim_opt, batch, device
         label[torch.rand(label.size()) < discrim_noise_level] = 0
     # Train on real
     d_real_pred = discrim(batch_real)
-    d_real_loss = bce_loss(d_real_pred.squeeze(), label)
+    d_real_loss = bce_loss(d_real_pred.squeeze(), label.float())
     d_real_loss.backward()
     d_real_pred_prob = torch.sigmoid(d_real_pred).mean()
     # Train on fake
@@ -469,7 +472,7 @@ def train_on_batch_traditional(gen, gen_opt, discrim, discrim_opt, batch, device
     if discrim_noise_level:
         label[torch.rand(label.size()) < discrim_noise_level] = 1
 
-    d_fake_loss = bce_loss(d_fake_pred.squeeze(), label)
+    d_fake_loss = bce_loss(d_fake_pred.squeeze(), label.float())
     d_fake_loss.backward()
     d_fake_pred_prob = torch.sigmoid(d_fake_pred).mean()
     discrim_opt.step()
@@ -478,7 +481,7 @@ def train_on_batch_traditional(gen, gen_opt, discrim, discrim_opt, batch, device
     gen.zero_grad()
     label = torch.full((batch_size, ), 1, device=device)
     d_fake_pred_for_gen = discrim(batch_fake)
-    gen_loss = bce_loss(d_fake_pred_for_gen.squeeze(), label)
+    gen_loss = bce_loss(d_fake_pred_for_gen.squeeze(), label.float())
     gen_loss.backward()
     gen_opt.step()
 

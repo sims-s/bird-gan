@@ -43,22 +43,29 @@ def calculate_statistics_for_dataset(img_path, save_path, batch_size, device, ma
     all_features = np.vstack(all_features).squeeze()
     np.save(save_path, all_features)
 
-
+# function doens't work sometimes? idk what's up with that
 def calculate_fid(path1, path2):
     features1 = np.load(path1)
     features2 = np.load(path2)
+    # print('loadded features')
 
     mean1 = np.mean(features1, axis=0)
     mean2 = np.mean(features2, axis=0)
+    # print('computesd mead')
     cov1 = np.cov(features1, rowvar=False)
     cov2 = np.cov(features2, rowvar=False)
+    # print('computed cov')
 
 
     diff = mean1 - mean2
+    # print('computed diff')
     cov_mean, err = sqrtm(cov1.dot(cov2), disp=False)
+    # print('computed cov')
     cov_mean = cov_mean.real
+    # print('mad cov real')
 
     trace_cov_mean = np.trace(cov_mean) 
+    # print('comptued trace')
 
     return diff.dot(diff) + np.trace(cov1) + np.trace(cov2) - 2*trace_cov_mean
 
@@ -70,6 +77,7 @@ def cleanup_fid(base_path):
 
 
 if __name__ == "__main__":
+    # just for testing...
     calculate_statistics_for_dataset('../data/modeling_256/images/', '../fid_test/real_1.npy',
                 8, torch.device('cuda'), 1024)
     calculate_statistics_for_dataset('../data/modeling_256/images/', '../fid_test/real_2.npy',

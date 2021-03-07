@@ -85,6 +85,7 @@ class StyleGanMapping(nn.Module):
             layers.append(EqualizedLRLinear(latent_size_in, latent_size_in))
             layers.append(nn.LeakyReLU(.2))
         layers.append(EqualizedLRLinear(latent_size_in, latent_size_out))
+        # Should this be here?
         layers.append(nn.LeakyReLU(.2))
         
         self.layers = nn.Sequential(*layers)
