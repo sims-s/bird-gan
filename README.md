@@ -43,6 +43,11 @@ Then the i-jth entry of the grid has the original styles of the row's image, exc
 #### Injected Noise Experiment
 In addition to the noise input, noise is injected to the generator (Normal 0,1).  We can scale that noise to be as large or small as we'd like. Images in [this folder](https://github.com/sims-s/bird-gan/tree/master/results/per_channel_noise) are my experimentation with that. The suffix for each name is the scaling times 100 (e.g. scaling of 25 --> scale by .25). You can see with no noise the "birds" are very flat, but as we increase the noise more, they get taller again. Interesting.
 
+#### Models
+* [Segmentation Model](https://drive.google.com/file/d/19L9fwZ-90EVhsibTD3agQFt4OfcTv8-h/view?usp=sharing)
+* [Best FID Generator](https://drive.google.com/file/d/1FAza7b6qscmaWJ_hmRW_PlAc2369GDhp/view?usp=sharing)
+* [Filter Models](https://drive.google.com/drive/folders/1eb03aAwhVz_C17c50ShAKn7Q6TjYu4j5?usp=sharing)
+
 ### Sources
 * Stylegan: https://arxiv.org/abs/1812.04948
 * Progan: https://arxiv.org/abs/1710.10196
