@@ -115,11 +115,17 @@ class StyleGanGenSynthesis(nn.Module):
             self.layers.append(GenBlockStyleGan(prev_features, this_features, latent_size))
             self.rgb_out_layers.append(EqualizedLRConv2d(this_features, 3, 1))
 
-    def forward(self, latents, depth, alpha):
-        x = self.first_layer(latents[:,:2])
+    def forward(self, latents, depth, alpha, per_channel_noise=None):
+        if per_channel_noise is None:
+            x = self.first_layer(latents[:,:2])
+        else:
+            x = self.first_layer(latents[:,:2], per_channel_noise[:,:2])
         if depth > 0:
             for i, block in enumerate(self.layers[:depth-1]):
-                x = block(x, latents[:, (i+1)*2:(i+1)*2+2])
+                if per_channel_noise is None:
+                    x = block(x, latents[:, (i+1)*2:(i+1)*2+2])
+                else:
+                    x = block(x, latents[:, (i+1)*2:(i+1)*2+2], per_channel_noise[:, (i+1)*2:(i+1)*2+2])
 
             prev_depth_out = self.rgb_out_layers[depth-1](F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=False))
             this_depth_out = self.rgb_out_layers[depth](self.layers[depth-1](x, latents[:,2*depth:2*depth+2]))
@@ -139,7 +145,7 @@ class StyleGanGenerator(nn.Module):
         self.truncation = Truncation(torch.zeros(latent_size_in))
         self.style_mix_prob = .9
 
-    def forward(self, latents, depth, alpha):
+    def forward(self, latents, depth, alpha, per_channel_noise=None):
         mapped_latents = self.mapping_layers(latents)
         if self.training:
             self.truncation.update(mapped_latents[:,0].detach().mean(dim=0))
@@ -156,7 +162,7 @@ class StyleGanGenerator(nn.Module):
             mapped_latents = torch.where(layer_idx < cutoff, mapped_latents, second_mapped_latents)
 
             mapped_latents = self.truncation(mapped_latents)
-        output = self.synthesis_layers(mapped_latents, depth, alpha).contiguous()
+        output = self.synthesis_layers(mapped_latents, depth, alpha, per_channel_noise).contiguous()
         return output
 
 

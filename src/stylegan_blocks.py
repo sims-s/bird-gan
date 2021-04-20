@@ -13,11 +13,19 @@ class FirstGenBlockStyleGan(nn.Module):
         self.conv = EqualizedLRConv2d(nb_channels, nb_channels, 3, padding=1)
         self.layers2 = NoiseLReluNormStyle(nb_channels, latent_size)
 
-    def forward(self, latents):
+    def forward(self, latents, per_channel_noise=None):
+        # print(per_channel_noise.size())
         x = self.const_input.expand(latents.size(0), -1, -1, -1) + self.bias.view(1, -1, 1, 1)
-        x = self.layers1(x, latents[:,0])
+        if per_channel_noise is None:
+            x = self.layers1(x, latents[:,0])
+        else:
+            x = self.layers1(x, latents[:,0], per_channel_noise[:,0])
         x = self.conv(x)
-        x = self.layers2(x, latents[:,1])
+
+        if per_channel_noise is None:
+            x = self.layers2(x, latents[:,1])
+        else:
+            x = self.layers2(x, latents[:,1], per_channel_noise[:,1])
         return x
 
 class GenBlockStyleGan(nn.Module):
@@ -29,11 +37,18 @@ class GenBlockStyleGan(nn.Module):
         self.conv2 = EqualizedLRConv2d(channels_out, channels_out, kernel_size=3, padding=1)
         self.layers2 = NoiseLReluNormStyle(channels_out, latent_size)
 
-    def forward(self, x, latents):
+    def forward(self, x, latents, per_channel_noise=None):
         x = self.conv1(x)
-        x = self.layers1(x, latents[:,0])
+        if per_channel_noise is None:
+            x = self.layers1(x, latents[:,0])
+        else:
+            x = self.layers1(x, latents[:,0], per_channel_noise[:,0])
+        
         x = self.conv2(x)
-        x = self.layers2(x, latents[:,1])
+        if per_channel_noise is None:
+            x = self.layers2(x, latents[:,1])
+        else:
+            x = self.layers2(x, latents[:,1], per_channel_noise[:,1])
         return x
         
 class DiscrimLastBlockStyleGan(nn.Module):
@@ -82,8 +97,8 @@ class NoiseLReluNormStyle(nn.Module):
 
         self.style_mod = StyleMod(nb_channels, latent_size)
 
-    def forward(self, x, other_style):
-        x = self.layers(x)
+    def forward(self, x, other_style, per_channel_noise=None):
+        x = self.layers((x, per_channel_noise))
         x = self.style_mod(x, other_style)
         return x
 

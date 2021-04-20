@@ -64,13 +64,13 @@ class PerChannelNoise(nn.Module):
         super(PerChannelNoise, self).__init__()
         self.weight = nn.Parameter(torch.zeros(channels))
 
-    def forward(self, x, noise=None):
+    def forward(self, input_maybe_noise):
+        x, noise = input_maybe_noise
         if noise is None:
             noise = torch.randn(x.size(0), 1, x.size(2), x.size(3)).to(x.device)
         else:
-            if not hasattr(self, 'noise'):
-                raise ValueError('Need to either pass or set noise!')
-            nosie = self.noise
+            noise = noise[:x.size(0), :x.size(2), :x.size(3)].unsqueeze(1)
+
 
         return x + self.weight.view(1, -1, 1, 1) * noise
 

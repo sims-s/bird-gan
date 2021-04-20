@@ -44,7 +44,7 @@ def swap_channels_batch(batch):
             return batch.permute(0,2,3,1).contiguous()
 
 def generate_noise(size, noise_size, device, seed=None):
-    if seed:
+    if seed is not None:
         torch.manual_seed(seed)
     noise = torch.randn(size, noise_size, device=device)
     return noise
@@ -70,6 +70,7 @@ def plot_imgs(imgs):
     fig.set_size_inches(8, 8)
     for i in range(4):
         for j in range(4):
+            axs[i,j].axis('off')
             axs[i,j].imshow(imgs[4*i+j])
     plt.show()
 
