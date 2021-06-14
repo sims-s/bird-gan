@@ -145,7 +145,7 @@ class StyleGanGenerator(nn.Module):
         self.truncation = Truncation(torch.zeros(latent_size_in))
         self.style_mix_prob = .9
 
-    def forward(self, latents, depth, alpha, per_channel_noise=None):
+    def forward(self, latents, depth, alpha, per_channel_noise=None, eval_truncation=True):
         mapped_latents = self.mapping_layers(latents)
         if self.training:
             self.truncation.update(mapped_latents[:,0].detach().mean(dim=0))
@@ -162,6 +162,10 @@ class StyleGanGenerator(nn.Module):
             mapped_latents = torch.where(layer_idx < cutoff, mapped_latents, second_mapped_latents)
 
             mapped_latents = self.truncation(mapped_latents)
+        elif eval_truncation:
+            mapped_latents = self.truncation(mapped_latents)
+
+
         output = self.synthesis_layers(mapped_latents, depth, alpha, per_channel_noise).contiguous()
         return output
 
