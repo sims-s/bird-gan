@@ -22,7 +22,7 @@ These samples are all cherrypicked becasue they look good. You can find some ran
 
 
 #### FID
-FID was computed using 10,000 generated samples. The best model has a FID of 8.669. Here's a plot of FID during training:
+FID was computed using 10,000 generated samples. The best model has a FID of 7.816. Here's a plot of FID during training:
 ![](https://github.com/sims-s/bird-gan/blob/master/results/FID.png)
 
 #### Fixed Noise GIF
