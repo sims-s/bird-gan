@@ -45,7 +45,7 @@ In addition to the noise input, noise is injected to the generator (Normal 0,1).
 
 #### Models
 * [Segmentation Model](https://drive.google.com/file/d/19L9fwZ-90EVhsibTD3agQFt4OfcTv8-h/view?usp=sharing)
-* [Best FID Generator](https://drive.google.com/file/d/1FAza7b6qscmaWJ_hmRW_PlAc2369GDhp/view?usp=sharing)
+* [Best FID Generator](https://drive.google.com/file/d/1FQXSC3AZJ1fX-9GpI9HA4i_5hoSVgYFj/view?usp=sharing)
 * [Filter Models](https://drive.google.com/drive/folders/1eb03aAwhVz_C17c50ShAKn7Q6TjYu4j5?usp=sharing)
 
 ### Sources
