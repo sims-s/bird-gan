@@ -26,7 +26,7 @@ FID was computed using 10,000 generated samples. The best model has a FID of 7.8
 ![](https://github.com/sims-s/bird-gan/blob/master/results/FID.png)
 
 #### Fixed Noise GIF
-Take some fixed noise, and have all model checkpoints produce images using it. Plot results to see how model evolves during training. You can see more examples [here](https://github.com/sims-s/bird-gan/tree/master/results/fixed_noise_gifs)
+Take some random noise, and have all model checkpoints produce images using that same noise. Plot results to see how model evolves during training. You can see more examples [here](https://github.com/sims-s/bird-gan/tree/master/results/fixed_noise_gifs)
 ![](https://github.com/sims-s/bird-gan/blob/master/results/fixed_noise_gifs/46.gif)
 
 #### Style Mixing
@@ -38,10 +38,11 @@ Then the i-jth entry of the grid has the original styles of the row's image, exc
 ![](https://github.com/sims-s/bird-gan/blob/master/results/style_mixing/StyleMix64128.png)
 
 #### Latent Interpolation
+Sample a set of N Latent vecotrs. For each consecutive pair, linearly ineterpolate between them and produce the image at every step of the interpolation. (50 interpolation steps per pair here).
 ![](https://github.com/sims-s/bird-gan/blob/master/results/latent_interpolation/noise_vector_interpolation.gif)
 
 #### Injected Noise Experiment
-In addition to the noise input, noise is injected to the generator (Normal 0,1).  We can scale that noise to be as large or small as we'd like. Images in [this folder](https://github.com/sims-s/bird-gan/tree/master/results/per_channel_noise) are my experimentation with that. The suffix for each name is the scaling times 100 (e.g. scaling of 25 --> scale by .25). You can see with no noise the "birds" are very flat, but as we increase the noise more, they get taller again. Interesting.
+In addition to the noise input, noise is injected to the generator at every stage (Normal 0,1).  We can scale that noise to be as large or small as we'd like. Images in [this folder](https://github.com/sims-s/bird-gan/tree/master/results/per_channel_noise) are my experimentation with that. The suffix for each name is the scaling times 100 (e.g. scaling of 25 --> scale by .25). You can see with no noise the "birds" are very flat, but as we increase the noise more, they get taller again. Interesting.
 
 #### Models
 * [Segmentation Model](https://drive.google.com/file/d/19L9fwZ-90EVhsibTD3agQFt4OfcTv8-h/view?usp=sharing)
